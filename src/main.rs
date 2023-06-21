@@ -4,10 +4,35 @@ fn main() {
         to_base64(&from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap()),
         "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
     );
+
+    // Set1 Challenge2
+    assert_eq!(
+        xor(
+            &from_hex("1c0111001f010100061a024b53535009181c").unwrap(), 
+            &from_hex("686974207468652062756c6c277320657965").unwrap()
+        ).unwrap(),
+        from_hex("746865206b696420646f6e277420706c6179").unwrap()
+    );
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct ParseError(String);
+
+#[derive(Debug, PartialEq)]
+struct IncompatibleVectorLength();
+
+fn xor(v1: &[u8], v2: &[u8]) -> Result<Vec<u8>, IncompatibleVectorLength> {
+    if v1.len() != v2.len() {
+        return Err(IncompatibleVectorLength());
+    }
+
+    let mut result = Vec::with_capacity(v1.len());
+
+    for (b1, b2) in v1.iter().zip(v2.iter()) {
+        result.push(b1 ^ b2);
+    }
+    Ok(result)
+}
 
 fn from_hex(hex_string: &str) -> Result<Vec<u8>, ParseError> {
     hex_string
@@ -74,7 +99,15 @@ fn to_base64(data: &[u8]) -> String {
     result
 }
 
-// test from_hex
+
+#[test]
+fn test_xor() {
+    assert_eq!(xor(&[], &[]), Ok(vec![]));
+    assert_eq!(xor(&[], &[1]), Err(IncompatibleVectorLength()));
+    assert_eq!(xor(&[1], &[]), Err(IncompatibleVectorLength()));
+    assert_eq!(xor(&[0b00, 0b11, 0b1010], &[0b11, 0b01, 0b1100]), Ok(vec![0b11, 0b10, 0b0110]));
+}
+
 #[test]
 fn test_from_hex() {
     assert_eq!(
