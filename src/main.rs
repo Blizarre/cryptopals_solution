@@ -1,5 +1,8 @@
 extern crate env_logger;
 
+use std::fs::File;
+use std::io::Read;
+
 use crate::conversion::{from_hex, to_base64, xor};
 use crate::decoding::decode_xor;
 
@@ -27,11 +30,35 @@ fn main() {
 
     // Set1 Challenge3
     assert_eq!(
-        String::from_utf8(decode_xor(
-            &from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736")
-                .unwrap()
-        ))
+        String::from_utf8(
+            decode_xor(
+                &from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736")
+                    .unwrap()
+            )
+            .unwrap()
+            .decoded_content
+        )
         .unwrap(),
         "Cooking MC's like a pound of bacon"
     );
+
+    // Set1 Challenge4
+    let mut data = String::new();
+    File::open("data/4.txt")
+        .and_then(|mut f| f.read_to_string(&mut data))
+        .unwrap();
+
+    let mut max_score = f32::MIN;
+    let mut best_line = String::new();
+
+    for line in data.split('\n') {
+        let decoded = decode_xor(&from_hex(line).unwrap());
+        if let Some(decoded) = decoded {
+            if decoded.score > max_score {
+                max_score = decoded.score;
+                best_line = String::from_utf8(decoded.decoded_content).unwrap();
+            }
+        }
+    }
+    assert_eq!(best_line, "Now that the party is jumping\n");
 }

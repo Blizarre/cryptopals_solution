@@ -3,7 +3,7 @@ extern crate log;
 use log::debug;
 use std::collections::HashSet;
 
-fn score_english(data: &[u8]) -> f32 {
+fn score_english(data: &[u8]) -> Option<f32> {
     // https://www3.nd.edu/~busiforc/handouts/cryptography/letterfrequencies.html
     // e, a, r, i, o, t makes about 50% of all the letters found in a typical english text
     let mut letters_bucket1 = 0;
@@ -13,7 +13,7 @@ fn score_english(data: &[u8]) -> f32 {
 
     for b in data {
         if !(b.is_ascii_alphanumeric() || b.is_ascii_whitespace() || b.is_ascii_punctuation()) {
-            return -1.0;
+            return None;
         }
         if b.is_ascii_alphabetic() {
             if [b'e', b'a', b'r', b'i', b'o', b't'].contains(&b.to_ascii_lowercase()) {
@@ -61,43 +61,87 @@ fn score_english(data: &[u8]) -> f32 {
         average_word_length_score
     );
 
-    common_word_score + frequency_score + average_word_length_score
+    Some(common_word_score + frequency_score + average_word_length_score)
 }
 
-pub fn decode_xor(data: &[u8]) -> Vec<u8> {
+pub struct DecodingResult {
+    pub score: f32,
+    pub decoded_content: Vec<u8>,
+}
+
+pub fn decode_xor(data: &[u8]) -> Option<DecodingResult> {
     let mut max_score = f32::MIN;
-    let mut best_candidate = vec![];
+    let mut best_candidate = None;
 
     for key in 0u8..=255u8 {
         let decoded: Vec<u8> = data.iter().map(|c| c ^ key).collect();
         let score = score_english(&decoded);
 
-        if score > max_score {
-            debug!(
-                "[decode_xor] Better score: {}: {}",
-                score,
-                String::from_utf8(decoded.clone()).unwrap()
-            );
-            best_candidate = decoded;
-            max_score = score;
+        if let Some(score) = score {
+            if score > max_score {
+                debug!(
+                    "[decode_xor] Better score: {}: {}",
+                    score,
+                    String::from_utf8(decoded.clone()).unwrap()
+                );
+                best_candidate = Some(decoded);
+                max_score = score;
+            }
         }
     }
-    best_candidate
+    best_candidate.map(|c| DecodingResult {
+        decoded_content: c,
+        score: max_score,
+    })
 }
 
 #[test]
 fn test_score_english() {
     assert!(
-        score_english("Hello world, This is a weird test".as_bytes())
-            > score_english("aaaBBB".as_bytes())
+        score_english("Hello world, This is a weird test".as_bytes()).unwrap()
+            > score_english("aaaBBB".as_bytes()).unwrap()
     );
     assert!(
-        score_english("Hello world. This is not a test".as_bytes())
-            > score_english("yesyesyesyes".as_bytes())
+        score_english("Hello world. This is not a test".as_bytes()).unwrap()
+            > score_english("yesyesyesyes".as_bytes()).unwrap()
     );
     assert!(
-        score_english("Hello world. This is not a test".as_bytes())
-            > score_english("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes())
+        score_english("Hello world. This is not a test".as_bytes()).unwrap()
+            > score_english("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
     );
-    assert!(score_english("aaaBBBCCC".as_bytes()) > score_english("Hello\0world".as_bytes()));
+    assert!(score_english("Hello\0world".as_bytes()).is_none());
+}
+
+#[test]
+fn test_decode_xor_success() {
+    let encrypted: Vec<u8> = vec![
+        0x03, 0x2E, 0x2E, 0x62, 0x2A, 0x37, 0x2F, 0x23, 0x2C, 0x62, 0x20, 0x27, 0x2B, 0x2C, 0x25,
+        0x31, 0x62, 0x23, 0x30, 0x27, 0x62, 0x20, 0x2D, 0x30, 0x2C, 0x62, 0x24, 0x30, 0x27, 0x27,
+        0x62, 0x23, 0x2C, 0x26, 0x62, 0x27, 0x33, 0x37, 0x23, 0x2E, 0x62, 0x2B, 0x2C, 0x62, 0x26,
+        0x2B, 0x25, 0x2C, 0x2B, 0x36, 0x3B, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x30, 0x2B, 0x25, 0x2A,
+        0x36, 0x31, 0x6C, 0x62, 0x16, 0x2A, 0x27, 0x3B, 0x62, 0x23, 0x30, 0x27, 0x62, 0x27, 0x2C,
+        0x26, 0x2D, 0x35, 0x27, 0x26, 0x62, 0x35, 0x2B, 0x36, 0x2A, 0x62, 0x30, 0x27, 0x23, 0x31,
+        0x2D, 0x2C, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x21, 0x2D, 0x2C, 0x31, 0x21, 0x2B, 0x27, 0x2C,
+        0x21, 0x27, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x31, 0x2A, 0x2D, 0x37, 0x2E, 0x26, 0x62, 0x23,
+        0x21, 0x36, 0x62, 0x36, 0x2D, 0x35, 0x23, 0x30, 0x26, 0x31, 0x62, 0x2D, 0x2C, 0x27, 0x62,
+        0x23, 0x2C, 0x2D, 0x36, 0x2A, 0x27, 0x30, 0x62, 0x2B, 0x2C, 0x62, 0x23, 0x62, 0x31, 0x32,
+        0x2B, 0x30, 0x2B, 0x36, 0x62, 0x2D, 0x24, 0x62, 0x20, 0x30, 0x2D, 0x36, 0x2A, 0x27, 0x30,
+        0x2A, 0x2D, 0x2D, 0x26, 0x6C,
+    ];
+    let decrypted = decode_xor(&encrypted);
+    assert!(decrypted.is_some());
+    let decrypted = decrypted.unwrap();
+
+    assert_eq!(
+        String::from_utf8(decrypted.decoded_content).unwrap(),
+        "All human beings are born free and equal in dignity and rights. ".to_owned() +
+        "They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood."
+    );
+}
+
+#[test]
+fn test_decode_xor_failure() {
+    let encrypted: Vec<u8> = (0..255).into_iter().collect();
+    let decrypted = decode_xor(&encrypted);
+    assert!(decrypted.is_none());
 }
