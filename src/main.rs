@@ -1,13 +1,15 @@
 extern crate env_logger;
 
+mod conversion;
+mod decrypt;
+mod encrypt;
+
 use std::fs::File;
 use std::io::Read;
 
 use crate::conversion::{from_hex, to_base64, xor};
-use crate::decoding::decode_xor;
-
-mod conversion;
-mod decoding;
+use crate::decrypt::decode_xor;
+use crate::encrypt::encode_xor;
 
 fn main() {
     env_logger::init();
@@ -61,4 +63,19 @@ fn main() {
         }
     }
     assert_eq!(best_line, "Now that the party is jumping\n");
+
+    // Set1 Challenge5
+    assert_eq!(
+        encode_xor(
+            b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal",
+            b"ICE"
+        )
+        .unwrap(),
+        vec![
+            11, 54, 55, 39, 42, 43, 46, 99, 98, 44, 46, 105, 105, 42, 35, 105, 58, 42, 60, 99, 36,
+            32, 45, 98, 61, 99, 52, 60, 42, 38, 34, 99, 36, 39, 39, 101, 39, 42, 40, 43, 47, 32,
+            67, 10, 101, 46, 44, 101, 42, 49, 36, 51, 58, 101, 62, 43, 32, 39, 99, 12, 105, 43, 32,
+            40, 49, 101, 40, 99, 38, 48, 46, 39, 40, 47
+        ]
+    );
 }
