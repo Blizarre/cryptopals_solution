@@ -10,7 +10,7 @@ use std::io::Read;
 
 use crate::block::padding;
 use crate::conversion::{from_hex, to_base64, xor};
-use crate::decrypt::decode_xor;
+use crate::decrypt::{decode_xor, hamming_distance};
 use crate::encrypt::encode_xor;
 
 fn main() {
@@ -85,6 +85,9 @@ fn set1() {
             40, 49, 101, 40, 99, 38, 48, 46, 39, 40, 47
         ])
     );
+
+    // Set1 Challenge6
+    assert_eq!(hamming_distance(b"this is a test", b"wokka wokka!!!"), 37);
 }
 
 fn set2() {

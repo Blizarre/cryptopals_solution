@@ -145,3 +145,26 @@ fn test_decode_xor_failure() {
     let decrypted = decode_xor(&encrypted);
     assert!(decrypted.is_none());
 }
+
+pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
+    let (short, long) = if block2.len() > block1.len() {
+        (block1.iter(), block2.iter())
+    } else {
+        (block2.iter(), block1.iter())
+    };
+
+    let mut distance = 0;
+    for (c1, c2) in long.zip(short.chain([0].iter().cycle())) {
+        distance += (c1 ^ c2).count_ones();
+    }
+    distance
+}
+
+#[test]
+fn test_hamming_distance() {
+    assert_eq!(hamming_distance(b"this is a test", b"this is a test"), 0);
+    assert_eq!(hamming_distance(b"", &[0b1, 0b1]), 2);
+    assert_eq!(hamming_distance(&[0b11, 0b11], &[0b11, 0b11]), 0);
+    assert_eq!(hamming_distance(&[], &[0b1111, 0b11]), 6);
+    assert_eq!(hamming_distance(&[0b1111, 0b11], &[]), 6);
+}
