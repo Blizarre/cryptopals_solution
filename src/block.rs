@@ -6,12 +6,11 @@ pub fn padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
         Err(DataTooLarge())
     } else {
         let padding_len = block_size - data.len() as u8;
-        Ok(
-            data.iter()
-                .chain(
-                    [padding_len].iter().cycle().take(padding_len as usize)
-                ).copied()
-        .collect())
+        Ok(data
+            .iter()
+            .chain([padding_len].iter().cycle().take(padding_len as usize))
+            .copied()
+            .collect())
     }
 }
 

@@ -1,25 +1,24 @@
 extern crate env_logger;
 
+mod block;
 mod conversion;
 mod decrypt;
 mod encrypt;
-mod block;
 
 use std::fs::File;
 use std::io::Read;
 
+use crate::block::padding;
 use crate::conversion::{from_hex, to_base64, xor};
 use crate::decrypt::decode_xor;
 use crate::encrypt::encode_xor;
-use crate::block::padding;
 
 fn main() {
     env_logger::init();
 
     set1();
 
-    assert_eq!(padding(b"YELLOW SUBMARINE", 20), Ok(Vec::from(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref())))
-
+    set2();
 }
 
 fn set1() {
@@ -86,4 +85,11 @@ fn set1() {
             40, 49, 101, 40, 99, 38, 48, 46, 39, 40, 47
         ])
     );
+}
+
+fn set2() {
+    assert_eq!(
+        padding(b"YELLOW SUBMARINE", 20),
+        Ok(Vec::from(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref()))
+    )
 }
