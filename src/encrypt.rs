@@ -3,14 +3,15 @@ pub struct EmptyKeyError();
 
 pub fn encode_xor(data: &[u8], key: &[u8]) -> Result<Vec<u8>, EmptyKeyError> {
     if key.is_empty() {
-        return Err(EmptyKeyError());
+        Err(EmptyKeyError())
+    } else {
+        Ok(data
+            .iter()
+            .zip(key.iter().cycle())
+            .map(|(b, k)| b ^ k)
+            .take(data.len())
+            .collect())
     }
-    Ok(data
-        .iter()
-        .zip(key.iter().cycle())
-        .map(|(b, k)| b ^ k)
-        .take(data.len())
-        .collect())
 }
 
 #[test]

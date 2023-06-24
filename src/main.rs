@@ -3,6 +3,7 @@ extern crate env_logger;
 mod conversion;
 mod decrypt;
 mod encrypt;
+mod block;
 
 use std::fs::File;
 use std::io::Read;
@@ -10,15 +11,23 @@ use std::io::Read;
 use crate::conversion::{from_hex, to_base64, xor};
 use crate::decrypt::decode_xor;
 use crate::encrypt::encode_xor;
+use crate::block::padding;
 
 fn main() {
     env_logger::init();
 
+    set1();
+
+    assert_eq!(padding(b"YELLOW SUBMARINE", 20), Ok(Vec::from(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref())))
+
+}
+
+fn set1() {
     // Set1 Challenge1
     assert_eq!(
-        to_base64(&from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap()),
-        "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
-    );
+            to_base64(&from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap()),
+            "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+        );
 
     // Set1 Challenge2
     assert_eq!(
@@ -69,13 +78,12 @@ fn main() {
         encode_xor(
             b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal",
             b"ICE"
-        )
-        .unwrap(),
-        vec![
+        ),
+        Ok(vec![
             11, 54, 55, 39, 42, 43, 46, 99, 98, 44, 46, 105, 105, 42, 35, 105, 58, 42, 60, 99, 36,
             32, 45, 98, 61, 99, 52, 60, 42, 38, 34, 99, 36, 39, 39, 101, 39, 42, 40, 43, 47, 32,
             67, 10, 101, 46, 44, 101, 42, 49, 36, 51, 58, 101, 62, 43, 32, 39, 99, 12, 105, 43, 32,
             40, 49, 101, 40, 99, 38, 48, 46, 39, 40, 47
-        ]
+        ])
     );
 }
