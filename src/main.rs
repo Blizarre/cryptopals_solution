@@ -10,7 +10,7 @@ use std::io::Read;
 
 use crate::block::padding;
 use crate::conversion::{from_hex, to_base64, xor};
-use crate::decrypt::{decode_xor, hamming_distance, EnglishWordFreq};
+use crate::decrypt::{break_xor_single_char, hamming_distance, EnglishWordFreq};
 use crate::encrypt::encode_xor;
 
 fn main() {
@@ -41,7 +41,7 @@ fn set1() {
     // Set1 Challenge3
     assert_eq!(
         String::from_utf8(
-            decode_xor::<EnglishWordFreq>(
+            break_xor_single_char::<EnglishWordFreq>(
                 &from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736")
                     .unwrap()
             )
@@ -62,7 +62,7 @@ fn set1() {
     let mut best_line = String::new();
 
     for line in data.split('\n') {
-        let decoded = decode_xor::<EnglishWordFreq>(&from_hex(line).unwrap());
+        let decoded = break_xor_single_char::<EnglishWordFreq>(&from_hex(line).unwrap());
         if let Some(decoded) = decoded {
             if decoded.score > max_score {
                 max_score = decoded.score;

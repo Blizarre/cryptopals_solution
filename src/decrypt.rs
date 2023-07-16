@@ -1,7 +1,10 @@
 extern crate log;
 
-use log::debug;
-use std::collections::HashSet;
+use log::{debug};
+use std::{
+    cmp::min,
+    collections::HashSet,
+};
 
 pub trait ScoringFunction {
     fn score(data: &[u8]) -> Option<f32>;
@@ -119,7 +122,7 @@ pub struct DecodingResult {
     pub decoded_content: Vec<u8>,
 }
 
-pub fn decode_xor<T: ScoringFunction>(data: &[u8]) -> Option<DecodingResult> {
+pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<DecodingResult> {
     let mut max_score = f32::MIN;
     let mut best_candidate = None;
 
@@ -143,6 +146,41 @@ pub fn decode_xor<T: ScoringFunction>(data: &[u8]) -> Option<DecodingResult> {
         decoded_content: c,
         score: max_score,
     })
+}
+
+fn find_xor_keysize(data: &[u8]) -> Option<usize> {
+    let max_key_size = min(40, data.len() / 2);
+
+    // Cannot use an iterator.min safely because f32 doesn't implement Ord
+    let mut min_score = None;
+    let mut min_key_size = None;
+
+    for key_size in 2..=max_key_size {
+        let iter = data.iter();
+        let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
+        let block2 = iter
+            .skip(key_size)
+            .take(key_size)
+            .copied()
+            .collect::<Vec<u8>>();
+        let score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
+        debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
+
+        if let Some(previous_min_score) = min_score {
+            if score < previous_min_score {
+                min_score = Some(score);
+                min_key_size = Some(key_size);
+            }
+        } else {
+            min_score = Some(score);
+            min_key_size = Some(key_size);
+        }
+    }
+    debug!(
+        "[find_xor_keysize] best size: {:?}, best score {:?}",
+        min_key_size, min_score
+    );
+    min_key_size
 }
 
 #[test]
@@ -195,7 +233,7 @@ fn test_decode_xor_success_englishwordfreq() {
         0x2B, 0x30, 0x2B, 0x36, 0x62, 0x2D, 0x24, 0x62, 0x20, 0x30, 0x2D, 0x36, 0x2A, 0x27, 0x30,
         0x2A, 0x2D, 0x2D, 0x26, 0x6C,
     ];
-    let decrypted = decode_xor::<EnglishWordFreq>(&encrypted);
+    let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
     assert!(decrypted.is_some());
     let decrypted = decrypted.unwrap();
 
@@ -209,7 +247,7 @@ fn test_decode_xor_success_englishwordfreq() {
 #[test]
 fn test_decode_xor_failure_englishwordfreq() {
     let encrypted: Vec<u8> = (0..255).collect();
-    let decrypted = decode_xor::<EnglishWordFreq>(&encrypted);
+    let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
     assert!(decrypted.is_none());
 }
 
@@ -234,4 +272,13 @@ fn test_hamming_distance() {
     assert_eq!(hamming_distance(&[0b11, 0b11], &[0b11, 0b11]), 0);
     assert_eq!(hamming_distance(&[], &[0b1111, 0b11]), 6);
     assert_eq!(hamming_distance(&[0b1111, 0b11], &[]), 6);
+}
+
+#[test]
+fn test_find_xor_keysize() {
+    assert_eq!(find_xor_keysize(&[]), None);
+    assert_eq!(find_xor_keysize(&[0, 1, 0, 2]), Some(2));
+    assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
+    assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
+    assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
 }
