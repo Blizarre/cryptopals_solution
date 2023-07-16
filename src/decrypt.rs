@@ -1,10 +1,7 @@
 extern crate log;
 
-use log::{debug};
-use std::{
-    cmp::min,
-    collections::HashSet,
-};
+use log::debug;
+use std::{cmp::min, collections::HashSet};
 
 pub trait ScoringFunction {
     fn score(data: &[u8]) -> Option<f32>;
@@ -148,7 +145,21 @@ pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<Decoding
     })
 }
 
-fn find_xor_keysize(data: &[u8]) -> Option<usize> {
+pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
+    let (short, long) = if block2.len() > block1.len() {
+        (block1.iter(), block2.iter())
+    } else {
+        (block2.iter(), block1.iter())
+    };
+
+    let mut distance = 0;
+    for (c1, c2) in long.zip(short.chain([0].iter().cycle())) {
+        distance += (c1 ^ c2).count_ones();
+    }
+    distance
+}
+
+pub fn find_xor_keysize(data: &[u8]) -> Option<usize> {
     let max_key_size = min(40, data.len() / 2);
 
     // Cannot use an iterator.min safely because f32 doesn't implement Ord
@@ -183,102 +194,94 @@ fn find_xor_keysize(data: &[u8]) -> Option<usize> {
     min_key_size
 }
 
-#[test]
-fn test_englishwordfreq() {
-    assert!(
-        EnglishWordFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
-            > EnglishWordFreq::score("aaaBBB".as_bytes()).unwrap()
-    );
-    assert!(
-        EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-            > EnglishWordFreq::score("yesyesyesyes".as_bytes()).unwrap()
-    );
-    assert!(
-        EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-            > EnglishWordFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
-    );
-    assert!(EnglishWordFreq::score("Hello\0world".as_bytes()).is_none());
-}
+#[cfg(test)]
+mod tests {
+    use crate::decrypt::*;
 
-#[test]
-fn test_englishletterfreq() {
-    assert!(
-        EnglishLetterFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
-            > EnglishLetterFreq::score("aaaBBB".as_bytes()).unwrap()
-    );
-    assert!(
-        EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-            > EnglishLetterFreq::score("yesyesyesyes".as_bytes()).unwrap()
-    );
-    assert!(
-        EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-            > EnglishLetterFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
-    );
-    assert!(EnglishLetterFreq::score("Hello\0world".as_bytes()).is_none());
-}
+    #[test]
+    fn test_englishwordfreq() {
+        assert!(
+            EnglishWordFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
+                > EnglishWordFreq::score("aaaBBB".as_bytes()).unwrap()
+        );
+        assert!(
+            EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
+                > EnglishWordFreq::score("yesyesyesyes".as_bytes()).unwrap()
+        );
+        assert!(
+            EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
+                > EnglishWordFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
+        );
+        assert!(EnglishWordFreq::score("Hello\0world".as_bytes()).is_none());
+    }
 
-#[test]
-fn test_decode_xor_success_englishwordfreq() {
-    let encrypted: Vec<u8> = vec![
-        0x03, 0x2E, 0x2E, 0x62, 0x2A, 0x37, 0x2F, 0x23, 0x2C, 0x62, 0x20, 0x27, 0x2B, 0x2C, 0x25,
-        0x31, 0x62, 0x23, 0x30, 0x27, 0x62, 0x20, 0x2D, 0x30, 0x2C, 0x62, 0x24, 0x30, 0x27, 0x27,
-        0x62, 0x23, 0x2C, 0x26, 0x62, 0x27, 0x33, 0x37, 0x23, 0x2E, 0x62, 0x2B, 0x2C, 0x62, 0x26,
-        0x2B, 0x25, 0x2C, 0x2B, 0x36, 0x3B, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x30, 0x2B, 0x25, 0x2A,
-        0x36, 0x31, 0x6C, 0x62, 0x16, 0x2A, 0x27, 0x3B, 0x62, 0x23, 0x30, 0x27, 0x62, 0x27, 0x2C,
-        0x26, 0x2D, 0x35, 0x27, 0x26, 0x62, 0x35, 0x2B, 0x36, 0x2A, 0x62, 0x30, 0x27, 0x23, 0x31,
-        0x2D, 0x2C, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x21, 0x2D, 0x2C, 0x31, 0x21, 0x2B, 0x27, 0x2C,
-        0x21, 0x27, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x31, 0x2A, 0x2D, 0x37, 0x2E, 0x26, 0x62, 0x23,
-        0x21, 0x36, 0x62, 0x36, 0x2D, 0x35, 0x23, 0x30, 0x26, 0x31, 0x62, 0x2D, 0x2C, 0x27, 0x62,
-        0x23, 0x2C, 0x2D, 0x36, 0x2A, 0x27, 0x30, 0x62, 0x2B, 0x2C, 0x62, 0x23, 0x62, 0x31, 0x32,
-        0x2B, 0x30, 0x2B, 0x36, 0x62, 0x2D, 0x24, 0x62, 0x20, 0x30, 0x2D, 0x36, 0x2A, 0x27, 0x30,
-        0x2A, 0x2D, 0x2D, 0x26, 0x6C,
-    ];
-    let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
-    assert!(decrypted.is_some());
-    let decrypted = decrypted.unwrap();
+    #[test]
+    fn test_englishletterfreq() {
+        assert!(
+            EnglishLetterFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
+                > EnglishLetterFreq::score("aaaBBB".as_bytes()).unwrap()
+        );
+        assert!(
+            EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
+                > EnglishLetterFreq::score("yesyesyesyes".as_bytes()).unwrap()
+        );
+        assert!(
+            EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
+                > EnglishLetterFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
+        );
+        assert!(EnglishLetterFreq::score("Hello\0world".as_bytes()).is_none());
+    }
 
-    assert_eq!(
+    #[test]
+    fn test_decode_xor_success_englishwordfreq() {
+        let encrypted: Vec<u8> = vec![
+            0x03, 0x2E, 0x2E, 0x62, 0x2A, 0x37, 0x2F, 0x23, 0x2C, 0x62, 0x20, 0x27, 0x2B, 0x2C,
+            0x25, 0x31, 0x62, 0x23, 0x30, 0x27, 0x62, 0x20, 0x2D, 0x30, 0x2C, 0x62, 0x24, 0x30,
+            0x27, 0x27, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x27, 0x33, 0x37, 0x23, 0x2E, 0x62, 0x2B,
+            0x2C, 0x62, 0x26, 0x2B, 0x25, 0x2C, 0x2B, 0x36, 0x3B, 0x62, 0x23, 0x2C, 0x26, 0x62,
+            0x30, 0x2B, 0x25, 0x2A, 0x36, 0x31, 0x6C, 0x62, 0x16, 0x2A, 0x27, 0x3B, 0x62, 0x23,
+            0x30, 0x27, 0x62, 0x27, 0x2C, 0x26, 0x2D, 0x35, 0x27, 0x26, 0x62, 0x35, 0x2B, 0x36,
+            0x2A, 0x62, 0x30, 0x27, 0x23, 0x31, 0x2D, 0x2C, 0x62, 0x23, 0x2C, 0x26, 0x62, 0x21,
+            0x2D, 0x2C, 0x31, 0x21, 0x2B, 0x27, 0x2C, 0x21, 0x27, 0x62, 0x23, 0x2C, 0x26, 0x62,
+            0x31, 0x2A, 0x2D, 0x37, 0x2E, 0x26, 0x62, 0x23, 0x21, 0x36, 0x62, 0x36, 0x2D, 0x35,
+            0x23, 0x30, 0x26, 0x31, 0x62, 0x2D, 0x2C, 0x27, 0x62, 0x23, 0x2C, 0x2D, 0x36, 0x2A,
+            0x27, 0x30, 0x62, 0x2B, 0x2C, 0x62, 0x23, 0x62, 0x31, 0x32, 0x2B, 0x30, 0x2B, 0x36,
+            0x62, 0x2D, 0x24, 0x62, 0x20, 0x30, 0x2D, 0x36, 0x2A, 0x27, 0x30, 0x2A, 0x2D, 0x2D,
+            0x26, 0x6C,
+        ];
+        let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
+        assert!(decrypted.is_some());
+        let decrypted = decrypted.unwrap();
+
+        assert_eq!(
         String::from_utf8(decrypted.decoded_content).unwrap(),
         "All human beings are born free and equal in dignity and rights. ".to_owned() +
         "They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood."
     );
-}
-
-#[test]
-fn test_decode_xor_failure_englishwordfreq() {
-    let encrypted: Vec<u8> = (0..255).collect();
-    let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
-    assert!(decrypted.is_none());
-}
-
-pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
-    let (short, long) = if block2.len() > block1.len() {
-        (block1.iter(), block2.iter())
-    } else {
-        (block2.iter(), block1.iter())
-    };
-
-    let mut distance = 0;
-    for (c1, c2) in long.zip(short.chain([0].iter().cycle())) {
-        distance += (c1 ^ c2).count_ones();
     }
-    distance
-}
 
-#[test]
-fn test_hamming_distance() {
-    assert_eq!(hamming_distance(b"this is a test", b"this is a test"), 0);
-    assert_eq!(hamming_distance(b"", &[0b1, 0b1]), 2);
-    assert_eq!(hamming_distance(&[0b11, 0b11], &[0b11, 0b11]), 0);
-    assert_eq!(hamming_distance(&[], &[0b1111, 0b11]), 6);
-    assert_eq!(hamming_distance(&[0b1111, 0b11], &[]), 6);
-}
+    #[test]
+    fn test_decode_xor_failure_englishwordfreq() {
+        let encrypted: Vec<u8> = (0..255).collect();
+        let decrypted = break_xor_single_char::<EnglishWordFreq>(&encrypted);
+        assert!(decrypted.is_none());
+    }
 
-#[test]
-fn test_find_xor_keysize() {
-    assert_eq!(find_xor_keysize(&[]), None);
-    assert_eq!(find_xor_keysize(&[0, 1, 0, 2]), Some(2));
-    assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
-    assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
-    assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
+    #[test]
+    fn test_hamming_distance() {
+        assert_eq!(hamming_distance(b"this is a test", b"this is a test"), 0);
+        assert_eq!(hamming_distance(b"", &[0b1, 0b1]), 2);
+        assert_eq!(hamming_distance(&[0b11, 0b11], &[0b11, 0b11]), 0);
+        assert_eq!(hamming_distance(&[], &[0b1111, 0b11]), 6);
+        assert_eq!(hamming_distance(&[0b1111, 0b11], &[]), 6);
+    }
+
+    #[test]
+    fn test_find_xor_keysize() {
+        assert_eq!(find_xor_keysize(&[]), None);
+        assert_eq!(find_xor_keysize(&[0, 1, 0, 2]), Some(2));
+        assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
+        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
+        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
+    }
 }

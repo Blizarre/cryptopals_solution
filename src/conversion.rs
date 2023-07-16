@@ -82,50 +82,55 @@ pub fn to_base64(data: &[u8]) -> String {
     result
 }
 
-#[test]
-fn test_xor() {
-    assert_eq!(xor(&[], &[]), Ok(vec![]));
-    assert_eq!(xor(&[], &[1]), Err(IncompatibleVectorLength()));
-    assert_eq!(xor(&[1], &[]), Err(IncompatibleVectorLength()));
-    assert_eq!(
-        xor(&[0b00, 0b11, 0b1010], &[0b11, 0b01, 0b1100]),
-        Ok(vec![0b11, 0b10, 0b0110])
-    );
-}
+#[cfg(test)]
+mod tests {
+    use crate::conversion::*;
 
-#[test]
-fn test_from_hex() {
-    assert_eq!(
-        from_hex("48656c6c6f2c20776f726c6421").unwrap(),
-        "Hello, world!".as_bytes()
-    );
+    #[test]
+    fn test_xor() {
+        assert_eq!(xor(&[], &[]), Ok(vec![]));
+        assert_eq!(xor(&[], &[1]), Err(IncompatibleVectorLength()));
+        assert_eq!(xor(&[1], &[]), Err(IncompatibleVectorLength()));
+        assert_eq!(
+            xor(&[0b00, 0b11, 0b1010], &[0b11, 0b01, 0b1100]),
+            Ok(vec![0b11, 0b10, 0b0110])
+        );
+    }
 
-    assert!(from_hex("").unwrap().is_empty());
-    assert!(from_hex("1").is_err());
-    assert!(from_hex("0A").unwrap() == from_hex("0a").unwrap());
+    #[test]
+    fn test_from_hex() {
+        assert_eq!(
+            from_hex("48656c6c6f2c20776f726c6421").unwrap(),
+            "Hello, world!".as_bytes()
+        );
 
-    assert!(from_hex("48656c6c6f2c20776f726c6421").is_ok());
-    assert!(from_hex("48656c6c6f2c20776f726c642").is_err());
-    assert!(from_hex("48656c6c6f2c20776f726c642g").is_err());
-}
+        assert!(from_hex("").unwrap().is_empty());
+        assert!(from_hex("1").is_err());
+        assert!(from_hex("0A").unwrap() == from_hex("0a").unwrap());
 
-#[test]
-fn test_tobase64() {
-    // The examples were generated from the shell:
-    // ~ $ echo -en "\xfa" | base64
-    // +g==
+        assert!(from_hex("48656c6c6f2c20776f726c6421").is_ok());
+        assert!(from_hex("48656c6c6f2c20776f726c642").is_err());
+        assert!(from_hex("48656c6c6f2c20776f726c642g").is_err());
+    }
 
-    assert_eq!(to_base64(b"Hello, world!!"), "SGVsbG8sIHdvcmxkISE=");
-    assert_eq!(to_base64(b"Hello, world!"), "SGVsbG8sIHdvcmxkIQ==");
-    assert_eq!(to_base64(b"Hello, world"), "SGVsbG8sIHdvcmxk");
-    assert_eq!(to_base64(b"foobar"), "Zm9vYmFy");
+    #[test]
+    fn test_tobase64() {
+        // The examples were generated from the shell:
+        // ~ $ echo -en "\xfa" | base64
+        // +g==
 
-    assert_eq!(to_base64(b""), "");
-    assert_eq!(to_base64(&[0]), "AA==");
-    assert_eq!(to_base64(&[0, 1]), "AAE=");
-    assert_eq!(to_base64(&[0, 1, 2]), "AAEC");
-    assert_eq!(to_base64(&[0, 1, 2, 0xff]), "AAEC/w==");
-    assert_eq!(to_base64(&[0x0f]), "Dw==");
-    assert_eq!(to_base64(&[0xfe]), "/g==");
-    assert_eq!(to_base64(&[0xfa]), "+g==");
+        assert_eq!(to_base64(b"Hello, world!!"), "SGVsbG8sIHdvcmxkISE=");
+        assert_eq!(to_base64(b"Hello, world!"), "SGVsbG8sIHdvcmxkIQ==");
+        assert_eq!(to_base64(b"Hello, world"), "SGVsbG8sIHdvcmxk");
+        assert_eq!(to_base64(b"foobar"), "Zm9vYmFy");
+
+        assert_eq!(to_base64(b""), "");
+        assert_eq!(to_base64(&[0]), "AA==");
+        assert_eq!(to_base64(&[0, 1]), "AAE=");
+        assert_eq!(to_base64(&[0, 1, 2]), "AAEC");
+        assert_eq!(to_base64(&[0, 1, 2, 0xff]), "AAEC/w==");
+        assert_eq!(to_base64(&[0x0f]), "Dw==");
+        assert_eq!(to_base64(&[0xfe]), "/g==");
+        assert_eq!(to_base64(&[0xfa]), "+g==");
+    }
 }

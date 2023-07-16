@@ -14,9 +14,14 @@ pub fn padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
     }
 }
 
-#[test]
-fn test_padding() {
-    assert_eq!(padding(&[1, 2, 3], 5), Ok(vec![1, 2, 3, 2, 2]));
-    assert_eq!(padding(&[1, 2, 3], 1), Err(DataTooLarge()));
-    assert_eq!(padding(&[], 4), Ok(vec![4, 4, 4, 4]));
+#[cfg(test)]
+mod tests {
+    use crate::block::*;
+
+    #[test]
+    fn test_padding() {
+        assert_eq!(padding(&[1, 2, 3], 5), Ok(vec![1, 2, 3, 2, 2]));
+        assert_eq!(padding(&[1, 2, 3], 1), Err(DataTooLarge()));
+        assert_eq!(padding(&[], 4), Ok(vec![4, 4, 4, 4]));
+    }
 }
