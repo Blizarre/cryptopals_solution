@@ -93,7 +93,9 @@ fn set1() {
     File::open("data/6.txt")
         .and_then(|mut fd| fd.read_to_string(&mut data))
         .unwrap();
-    assert_eq!(find_xor_keysize(&from_base64(&data).unwrap()).unwrap(), 5);
+    let key_size = find_xor_keysize(&from_base64(&data).unwrap()).unwrap();
+    assert_eq!(key_size, 5);
+
 }
 
 fn set2() {

@@ -194,6 +194,14 @@ pub fn find_xor_keysize(data: &[u8]) -> Option<usize> {
     min_key_size
 }
 
+fn transpose_blocks(data: &[u8], key_size: u8) -> Vec<Vec<u8>> {
+    let mut blocks = Vec::new();
+    blocks.resize_with(key_size as usize, Vec::new);
+    data.chunks(key_size as usize)
+        .for_each(|chunk| blocks.iter_mut().zip(chunk).for_each(|(b, c)| b.push(*c)));
+    blocks
+}
+
 #[cfg(test)]
 mod tests {
     use crate::decrypt::*;
@@ -283,5 +291,26 @@ mod tests {
         assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
         assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
         assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
+    }
+
+    #[test]
+    fn test_transpose() {
+        assert_eq!(
+            transpose_blocks(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 3),
+            vec![vec![1, 4, 7, 10], vec![2, 5, 8], vec![3, 6, 9],]
+        );
+        assert_eq!(transpose_blocks(&[], 3), vec![vec![], vec![], vec![]]);
+        assert_eq!(
+            transpose_blocks(&[1, 2, 3], 3),
+            vec![vec![1], vec![2], vec![3]]
+        );
+        assert_eq!(
+            transpose_blocks(&[1, 2, 3, 4], 3),
+            vec![vec![1, 4], vec![2], vec![3]]
+        );
+        assert_eq!(
+            transpose_blocks(&[1], 3),
+            vec![vec![1], vec![], vec![]]
+        );
     }
 }
