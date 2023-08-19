@@ -1,7 +1,10 @@
 extern crate log;
 
 use log::debug;
-use std::{cmp::min, collections::HashSet};
+use std::{
+    cmp::{min, Ordering},
+    collections::HashSet,
+};
 
 pub trait ScoringFunction {
     fn score(data: &[u8]) -> Option<f32>;
@@ -135,7 +138,11 @@ pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<Decoding
                     score,
                     String::from_utf8(decoded.clone()).unwrap()
                 );
-                result = Some(DecodingResult { score: score, key: key, decoded_content: decoded });
+                result = Some(DecodingResult {
+                    score: score,
+                    key: key,
+                    decoded_content: decoded,
+                });
                 max_score = score;
             }
         }
@@ -157,39 +164,25 @@ pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
     distance
 }
 
-pub fn find_xor_keysize(data: &[u8]) -> Option<usize> {
+pub fn find_likely_xor_keysizes(data: &[u8]) -> Vec<usize> {
     let max_key_size = min(40, data.len() / 2);
 
-    // Cannot use an iterator.min safely because f32 doesn't implement Ord
-    let mut min_score = None;
-    let mut min_key_size = None;
-
-    for key_size in 2..=max_key_size {
-        let iter = data.iter();
-        let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
-        let block2 = iter
-            .skip(key_size)
-            .take(key_size)
-            .copied()
-            .collect::<Vec<u8>>();
-        let score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
-        debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
-
-        if let Some(previous_min_score) = min_score {
-            if score < previous_min_score {
-                min_score = Some(score);
-                min_key_size = Some(key_size);
-            }
-        } else {
-            min_score = Some(score);
-            min_key_size = Some(key_size);
-        }
-    }
-    debug!(
-        "[find_xor_keysize] best size: {:?}, best score {:?}",
-        min_key_size, min_score
-    );
-    min_key_size
+    let mut scores: Vec<(usize, f32)> = (2..=max_key_size)
+        .map(|key_size| {
+            let iter = data.iter();
+            let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
+            let block2 = iter
+                .skip(key_size)
+                .take(key_size)
+                .copied()
+                .collect::<Vec<u8>>();
+            let score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
+            debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
+            (key_size, score)
+        })
+        .collect();
+    scores.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    scores.iter().map(|s| s.0).collect()
 }
 
 fn transpose_blocks(data: &[u8], key_size: usize) -> Vec<Vec<u8>> {
@@ -204,7 +197,7 @@ pub fn find_key_block_xor(data: &[u8], key_size: usize) -> Option<Vec<u8>> {
     transpose_blocks(data, key_size)
         .iter()
         .map(|b| break_xor_single_char::<EnglishLetterFreq>(b))
-        .map(|d| d.map(|d|d.key))
+        .map(|d| d.map(|d| d.key))
         .collect::<Option<Vec<u8>>>()
 }
 
@@ -292,11 +285,11 @@ mod tests {
 
     #[test]
     fn test_find_xor_keysize() {
-        assert_eq!(find_xor_keysize(&[]), None);
-        assert_eq!(find_xor_keysize(&[0, 1, 0, 2]), Some(2));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
+        assert_eq!(find_likely_xor_keysizes(&[]), vec![]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 0, 2]), vec![2]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 0, 1, 2]), vec![3, 2]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 3])[0], 4);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 2])[0], 4);
     }
 
     #[test]

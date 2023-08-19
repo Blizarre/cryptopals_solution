@@ -11,7 +11,8 @@ use std::io::Read;
 use crate::block::padding;
 use crate::conversion::{from_base64, from_hex, to_base64, xor};
 use crate::decrypt::{
-    break_xor_single_char, find_key_block_xor, find_xor_keysize, hamming_distance, EnglishWordFreq,
+    break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
+    EnglishWordFreq,
 };
 use crate::encrypt::encode_xor;
 
@@ -96,17 +97,21 @@ fn set1() {
         .and_then(|mut fd| fd.read_to_string(&mut base64_data))
         .unwrap();
     let data = &from_base64(&data).unwrap();
-    let key_size = find_xor_keysize(data).unwrap();
-    assert_eq!(key_size, 12);
-    let key = find_key_block_xor(data, key_size);
-    let decoded_data = data
-        .chunks(key_size)
-        .map(|d| encode_xor(d, &key))
-        .flatten()
-        .flatten()
-        .collect::<Vec<u8>>();
-    let decoded = String::from_utf8(decoded_data).unwrap();
-    assert_eq!(decoded, "")
+    let key_sizes = find_likely_xor_keysizes(data);
+    let mut decoded = None;
+    for key_size in key_sizes {
+        if let Some(key) = find_key_block_xor(data, key_size) {
+            let decoded_data = data
+                .chunks(key_size)
+                .map(|d| encode_xor(d, &key))
+                .flatten()
+                .flatten()
+                .collect::<Vec<u8>>();
+            decoded = Some(String::from_utf8(decoded_data).unwrap());
+            break;
+        }
+    }
+    assert_eq!(decoded, Some("Bob".to_string()));
 }
 
 fn set2() {
