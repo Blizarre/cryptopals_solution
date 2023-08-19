@@ -116,12 +116,13 @@ impl ScoringFunction for EnglishWordFreq {
 }
 pub struct DecodingResult {
     pub score: f32,
+    pub key: u8,
     pub decoded_content: Vec<u8>,
 }
 
 pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<DecodingResult> {
     let mut max_score = f32::MIN;
-    let mut best_candidate = None;
+    let mut result: Option<DecodingResult> = None;
 
     for key in 0u8..=255u8 {
         let decoded: Vec<u8> = data.iter().map(|c| c ^ key).collect();
@@ -134,15 +135,12 @@ pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<Decoding
                     score,
                     String::from_utf8(decoded.clone()).unwrap()
                 );
-                best_candidate = Some(decoded);
+                result = Some(DecodingResult { score: score, key: key, decoded_content: decoded });
                 max_score = score;
             }
         }
     }
-    best_candidate.map(|c| DecodingResult {
-        decoded_content: c,
-        score: max_score,
-    })
+    result
 }
 
 pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
@@ -194,12 +192,20 @@ pub fn find_xor_keysize(data: &[u8]) -> Option<usize> {
     min_key_size
 }
 
-fn transpose_blocks(data: &[u8], key_size: u8) -> Vec<Vec<u8>> {
+fn transpose_blocks(data: &[u8], key_size: usize) -> Vec<Vec<u8>> {
     let mut blocks = Vec::new();
-    blocks.resize_with(key_size as usize, Vec::new);
-    data.chunks(key_size as usize)
+    blocks.resize_with(key_size, Vec::new);
+    data.chunks(key_size)
         .for_each(|chunk| blocks.iter_mut().zip(chunk).for_each(|(b, c)| b.push(*c)));
     blocks
+}
+
+pub fn find_key_block_xor(data: &[u8], key_size: usize) -> Option<Vec<u8>> {
+    transpose_blocks(data, key_size)
+        .iter()
+        .map(|b| break_xor_single_char::<EnglishLetterFreq>(b))
+        .map(|d| d.map(|d|d.key))
+        .collect::<Option<Vec<u8>>>()
 }
 
 #[cfg(test)]
@@ -308,9 +314,6 @@ mod tests {
             transpose_blocks(&[1, 2, 3, 4], 3),
             vec![vec![1, 4], vec![2], vec![3]]
         );
-        assert_eq!(
-            transpose_blocks(&[1], 3),
-            vec![vec![1], vec![], vec![]]
-        );
+        assert_eq!(transpose_blocks(&[1], 3), vec![vec![1], vec![], vec![]]);
     }
 }

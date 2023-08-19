@@ -10,7 +10,9 @@ use std::io::Read;
 
 use crate::block::padding;
 use crate::conversion::{from_base64, from_hex, to_base64, xor};
-use crate::decrypt::{break_xor_single_char, find_xor_keysize, hamming_distance, EnglishWordFreq};
+use crate::decrypt::{
+    break_xor_single_char, find_key_block_xor, find_xor_keysize, hamming_distance, EnglishWordFreq,
+};
 use crate::encrypt::encode_xor;
 
 fn main() {
@@ -89,13 +91,22 @@ fn set1() {
     // Set1 Challenge6
     assert_eq!(hamming_distance(b"this is a test", b"wokka wokka!!!"), 37);
 
-    let mut data = String::new();
+    let mut base64_data = String::new();
     File::open("data/6.txt")
-        .and_then(|mut fd| fd.read_to_string(&mut data))
+        .and_then(|mut fd| fd.read_to_string(&mut base64_data))
         .unwrap();
-    let key_size = find_xor_keysize(&from_base64(&data).unwrap()).unwrap();
-    assert_eq!(key_size, 5);
-
+    let data = &from_base64(&data).unwrap();
+    let key_size = find_xor_keysize(data).unwrap();
+    assert_eq!(key_size, 12);
+    let key = find_key_block_xor(data, key_size);
+    let decoded_data = data
+        .chunks(key_size)
+        .map(|d| encode_xor(d, &key))
+        .flatten()
+        .flatten()
+        .collect::<Vec<u8>>();
+    let decoded = String::from_utf8(decoded_data).unwrap();
+    assert_eq!(decoded, "")
 }
 
 fn set2() {
