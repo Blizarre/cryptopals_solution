@@ -15,7 +15,6 @@ pub struct EnglishLetterFreq();
 impl ScoringFunction for EnglishLetterFreq {
     fn score(data: &[u8]) -> Option<f32> {
         let mut letter_stats = [0; 26];
-
         for c in data {
             if c.is_ascii_alphabetic() {
                 letter_stats[c.to_ascii_lowercase() as usize - 'a' as usize] += 1;
@@ -139,8 +138,8 @@ pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<Decoding
                     String::from_utf8(decoded.clone()).unwrap()
                 );
                 result = Some(DecodingResult {
-                    score: score,
-                    key: key,
+                    score,
+                    key,
                     decoded_content: decoded,
                 });
                 max_score = score;
@@ -165,18 +164,27 @@ pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
 }
 
 pub fn find_likely_xor_keysizes(data: &[u8]) -> Vec<usize> {
-    let max_key_size = min(40, data.len() / 2);
+    let max_key_size = min(40, data.len() / 3);
 
     let mut scores: Vec<(usize, f32)> = (2..=max_key_size)
         .map(|key_size| {
             let iter = data.iter();
             let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
             let block2 = iter
+                .clone()
                 .skip(key_size)
                 .take(key_size)
                 .copied()
                 .collect::<Vec<u8>>();
-            let score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
+            let block3 = iter
+                .skip(2 * key_size)
+                .take(key_size)
+                .copied()
+                .collect::<Vec<u8>>();
+            let mut score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
+            score += hamming_distance(&block1, &block3) as f32 / key_size as f32;
+            score += hamming_distance(&block2, &block3) as f32 / key_size as f32;
+            score /= 3.0;
             debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
             (key_size, score)
         })
