@@ -7,11 +7,31 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
-            "program": "${workspaceFolder}/target/debug/cryptopals_solution",
+            "name": "Cargo test",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                ]
+            },
             "args": [],
-            "cwd": "${workspaceFolder}",
-            "sourceLanguages": ["rust"],
+            "initCommands": [
+                "settings set target.disable-aslr false"
+            ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo launch",
+            "cargo": {
+                "args": [
+                    "build",
+                ]
+            },
+            "args": [],
+            "initCommands": [
+                "settings set target.disable-aslr false"
+            ]
         }
     ]
 }

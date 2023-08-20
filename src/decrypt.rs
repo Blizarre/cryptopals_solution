@@ -1,7 +1,10 @@
 extern crate log;
 
 use log::debug;
-use std::{cmp::min, collections::HashSet};
+use std::{
+    cmp::{min, Ordering},
+    collections::HashSet,
+};
 
 pub trait ScoringFunction {
     fn score(data: &[u8]) -> Option<f32>;
@@ -12,7 +15,6 @@ pub struct EnglishLetterFreq();
 impl ScoringFunction for EnglishLetterFreq {
     fn score(data: &[u8]) -> Option<f32> {
         let mut letter_stats = [0; 26];
-
         for c in data {
             if c.is_ascii_alphabetic() {
                 letter_stats[c.to_ascii_lowercase() as usize - 'a' as usize] += 1;
@@ -116,12 +118,13 @@ impl ScoringFunction for EnglishWordFreq {
 }
 pub struct DecodingResult {
     pub score: f32,
+    pub key: u8,
     pub decoded_content: Vec<u8>,
 }
 
 pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<DecodingResult> {
     let mut max_score = f32::MIN;
-    let mut best_candidate = None;
+    let mut result: Option<DecodingResult> = None;
 
     for key in 0u8..=255u8 {
         let decoded: Vec<u8> = data.iter().map(|c| c ^ key).collect();
@@ -134,15 +137,16 @@ pub fn break_xor_single_char<T: ScoringFunction>(data: &[u8]) -> Option<Decoding
                     score,
                     String::from_utf8(decoded.clone()).unwrap()
                 );
-                best_candidate = Some(decoded);
+                result = Some(DecodingResult {
+                    score,
+                    key,
+                    decoded_content: decoded,
+                });
                 max_score = score;
             }
         }
     }
-    best_candidate.map(|c| DecodingResult {
-        decoded_content: c,
-        score: max_score,
-    })
+    result
 }
 
 pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
@@ -159,47 +163,50 @@ pub fn hamming_distance(block1: &[u8], block2: &[u8]) -> u32 {
     distance
 }
 
-pub fn find_xor_keysize(data: &[u8]) -> Option<usize> {
-    let max_key_size = min(40, data.len() / 2);
+pub fn find_likely_xor_keysizes(data: &[u8]) -> Vec<usize> {
+    let max_key_size = min(40, data.len() / 3);
 
-    // Cannot use an iterator.min safely because f32 doesn't implement Ord
-    let mut min_score = None;
-    let mut min_key_size = None;
-
-    for key_size in 2..=max_key_size {
-        let iter = data.iter();
-        let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
-        let block2 = iter
-            .skip(key_size)
-            .take(key_size)
-            .copied()
-            .collect::<Vec<u8>>();
-        let score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
-        debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
-
-        if let Some(previous_min_score) = min_score {
-            if score < previous_min_score {
-                min_score = Some(score);
-                min_key_size = Some(key_size);
-            }
-        } else {
-            min_score = Some(score);
-            min_key_size = Some(key_size);
-        }
-    }
-    debug!(
-        "[find_xor_keysize] best size: {:?}, best score {:?}",
-        min_key_size, min_score
-    );
-    min_key_size
+    let mut scores: Vec<(usize, f32)> = (2..=max_key_size)
+        .map(|key_size| {
+            let iter = data.iter();
+            let block1 = iter.clone().take(key_size).copied().collect::<Vec<u8>>();
+            let block2 = iter
+                .clone()
+                .skip(key_size)
+                .take(key_size)
+                .copied()
+                .collect::<Vec<u8>>();
+            let block3 = iter
+                .skip(2 * key_size)
+                .take(key_size)
+                .copied()
+                .collect::<Vec<u8>>();
+            let mut score = hamming_distance(&block1, &block2) as f32 / key_size as f32;
+            score += hamming_distance(&block1, &block3) as f32 / key_size as f32;
+            score += hamming_distance(&block2, &block3) as f32 / key_size as f32;
+            score /= 3.0;
+            debug!("[find_xor_keysize] size: {:?}, score {:?}", key_size, score);
+            (key_size, score)
+        })
+        .collect();
+    scores.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    scores.iter().map(|s| s.0).collect()
 }
 
-fn transpose_blocks(data: &[u8], key_size: u8) -> Vec<Vec<u8>> {
+fn transpose_blocks(data: &[u8], key_size: usize) -> Vec<Vec<u8>> {
     let mut blocks = Vec::new();
-    blocks.resize_with(key_size as usize, Vec::new);
-    data.chunks(key_size as usize)
+    blocks.resize_with(key_size, Vec::new);
+    data.chunks(key_size)
         .for_each(|chunk| blocks.iter_mut().zip(chunk).for_each(|(b, c)| b.push(*c)));
     blocks
+}
+
+pub fn find_key_block_xor(data: &[u8], key_size: usize) -> Option<Vec<u8>> {
+    transpose_blocks(data, key_size)
+        .iter()
+        .map(|b| break_xor_single_char::<EnglishLetterFreq>(b))
+        .map(|d| d.map(|d| d.key))
+        .collect::<Option<Vec<u8>>>()
 }
 
 #[cfg(test)]
@@ -286,11 +293,11 @@ mod tests {
 
     #[test]
     fn test_find_xor_keysize() {
-        assert_eq!(find_xor_keysize(&[]), None);
-        assert_eq!(find_xor_keysize(&[0, 1, 0, 2]), Some(2));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 0, 1, 2]), Some(3));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 3]), Some(4));
-        assert_eq!(find_xor_keysize(&[0, 1, 2, 3, 0, 1, 2, 2]), Some(4));
+        assert_eq!(find_likely_xor_keysizes(&[]), vec![]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 0, 2]), vec![2]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 0, 1, 2]), vec![3, 2]);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 3])[0], 4);
+        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 2])[0], 4);
     }
 
     #[test]
@@ -308,9 +315,6 @@ mod tests {
             transpose_blocks(&[1, 2, 3, 4], 3),
             vec![vec![1, 4], vec![2], vec![3]]
         );
-        assert_eq!(
-            transpose_blocks(&[1], 3),
-            vec![vec![1], vec![], vec![]]
-        );
+        assert_eq!(transpose_blocks(&[1], 3), vec![vec![1], vec![], vec![]]);
     }
 }
