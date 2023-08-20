@@ -292,12 +292,20 @@ mod tests {
     }
 
     #[test]
-    fn test_find_xor_keysize() {
+    fn test_find_likely_xor_keysizes() {
         assert_eq!(find_likely_xor_keysizes(&[]), vec![]);
-        assert_eq!(find_likely_xor_keysizes(&[0, 1, 0, 2]), vec![2]);
-        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 0, 1, 2]), vec![3, 2]);
-        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 3])[0], 4);
-        assert_eq!(find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 2])[0], 4);
+        assert_eq!(
+            find_likely_xor_keysizes(&[0, 1, 2, 0, 1, 2, 0, 1, 2]),
+            vec![3, 2]
+        );
+        assert_eq!(
+            find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3])[0],
+            4
+        );
+        assert_eq!(
+            find_likely_xor_keysizes(&[0, 1, 2, 3, 0, 1, 2, 2, 1, 1, 2, 3])[0],
+            4
+        );
     }
 
     #[test]
