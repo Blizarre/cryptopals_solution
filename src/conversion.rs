@@ -1,3 +1,5 @@
+use std::{error::Error, fmt, fs::File, io::Read};
+
 #[derive(Debug, PartialEq)]
 pub struct ParseError(String);
 
@@ -46,8 +48,22 @@ fn to_base64_char(b: u8) -> char {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct InvalidBase64Char();
+#[derive(Debug)]
+pub struct InvalidBase64Char {
+    character: char,
+}
+
+impl fmt::Display for InvalidBase64Char {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Invalid Base64 data, char {} is invalid", self.character)
+    }
+}
+
+impl Error for InvalidBase64Char {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
 
 // https://datatracker.ietf.org/doc/html/rfc4648#section-4
 fn from_base64_char(c: char) -> Result<u8, InvalidBase64Char> {
@@ -57,7 +73,7 @@ fn from_base64_char(c: char) -> Result<u8, InvalidBase64Char> {
         '0'..='9' => Ok(c as u8 - b'0' + 52),
         '+' => Ok(62),
         '/' => Ok(63),
-        _ => Err(InvalidBase64Char()),
+        _ => Err(InvalidBase64Char { character: c }),
     }
 }
 
@@ -140,8 +156,17 @@ pub fn from_base64(data: &str) -> Result<Vec<u8>, InvalidBase64Char> {
     Ok(output)
 }
 
+pub fn load_base64_file(file_id: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + 'static>> {
+    let mut base64_data = String::new();
+    let file_name = format!("data/{}.txt", file_id);
+    File::open(file_name.clone()).and_then(|mut fd| fd.read_to_string(&mut base64_data))?;
+    Ok(from_base64(&base64_data)?)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io::ErrorKind;
+
     use crate::conversion::*;
 
     #[test]
@@ -209,5 +234,15 @@ mod tests {
             b"Je pense donc je suis\n"
         );
         assert!(from_base64("Je & pense").is_err());
+    }
+
+    #[test]
+    fn test_load_base64_file() {
+        let load_result = load_base64_file("UNKNOWN");
+        assert!(load_result.is_err());
+        let concrete_error = load_result.unwrap_err();
+        let io_error = concrete_error.downcast::<std::io::Error>();
+        assert!(io_error.is_ok());
+        assert_eq!(io_error.unwrap().kind(), ErrorKind::NotFound);
     }
 }

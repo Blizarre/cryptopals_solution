@@ -13,7 +13,7 @@ use log::info;
 use openssl::cipher_ctx::CipherCtx;
 
 use crate::block::padding;
-use crate::conversion::{from_base64, from_hex, to_base64, xor};
+use crate::conversion::{from_hex, load_base64_file, to_base64, xor};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
@@ -104,16 +104,13 @@ fn set1() {
 
     assert_eq!(hamming_distance(b"this is a test", b"wokka wokka!!!"), 37);
 
-    let mut base64_data = String::new();
-    File::open("data/6.txt")
-        .and_then(|mut fd| fd.read_to_string(&mut base64_data))
-        .unwrap();
-    let data = &from_base64(&base64_data).unwrap();
-    let key_sizes = find_likely_xor_keysizes(data);
+    let data = load_base64_file("6").unwrap();
+
+    let key_sizes = find_likely_xor_keysizes(&data);
     let mut decoded = None;
     for key_size in key_sizes {
         info!("Checking key size {}", key_size);
-        if let Some(key) = find_key_block_xor(data, key_size) {
+        if let Some(key) = find_key_block_xor(&data, key_size) {
             let decoded_data = data
                 .chunks(key_size)
                 .flat_map(|d| encode_xor(d, &key))
@@ -210,11 +207,8 @@ fn set1() {
     );
 
     info!("Set1 Challenge7");
-    let mut base64_data = String::new();
-    File::open("data/7.txt")
-        .and_then(|mut fd| fd.read_to_string(&mut base64_data))
-        .unwrap();
-    let data = &from_base64(&base64_data).unwrap();
+
+    let data = load_base64_file("7").unwrap();
     let cipher = openssl::cipher::Cipher::aes_128_ecb();
 
     let mut ctx = CipherCtx::new().unwrap();
@@ -222,8 +216,9 @@ fn set1() {
         .unwrap();
 
     let mut ciphertext = vec![];
-    ctx.cipher_update_vec(data, &mut ciphertext).unwrap();
+    ctx.cipher_update_vec(&data, &mut ciphertext).unwrap();
     ctx.cipher_final_vec(&mut ciphertext).unwrap();
+
     assert_eq!(
         String::from_utf8(ciphertext),
         Ok("I'm back and I'm ringin' the bell \n".to_owned()
