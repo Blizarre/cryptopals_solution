@@ -13,7 +13,7 @@ use std::io::Read;
 use log::info;
 use openssl::cipher_ctx::CipherCtx;
 
-use crate::base64::{load_base64_file, to_base64};
+use crate::base64::{from_base64, load_base64_file, to_base64};
 use crate::block::{padding, xor};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
@@ -33,14 +33,14 @@ fn main() {
 }
 
 fn set1() {
-    info!("Set1 Challenge1");
+    info!("Set1 Challenge 1");
 
     assert_eq!(
             to_base64(&from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap()),
             "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
         );
 
-    info!("Set1 Challenge2");
+    info!("Set1 Challenge 2");
 
     assert_eq!(
         xor(
@@ -66,7 +66,7 @@ fn set1() {
         "Cooking MC's like a pound of bacon"
     );
 
-    info!("Set1 Challenge4");
+    info!("Set1 Challenge 4");
 
     let mut data = String::new();
     File::open("data/4.txt")
@@ -87,7 +87,7 @@ fn set1() {
     }
     assert_eq!(best_line, "Now that the party is jumping\n");
 
-    info!("Set1 Challenge5");
+    info!("Set1 Challenge 5");
 
     assert_eq!(
         encode_xor(
@@ -102,7 +102,7 @@ fn set1() {
         ])
     );
 
-    info!("Set1 Challenge6");
+    info!("Set1 Challenge 6");
 
     assert_eq!(hamming_distance(b"this is a test", b"wokka wokka!!!"), 37);
 
@@ -208,7 +208,7 @@ fn set1() {
         )
     );
 
-    info!("Set1 Challenge7");
+    info!("Set1 Challenge 7");
 
     let data = load_base64_file("7").unwrap();
     let cipher = openssl::cipher::Cipher::aes_128_ecb();
@@ -304,6 +304,31 @@ fn set1() {
             + "Play that funky music \n"
             + "")
     );
+
+    info!("Set1 Challenge 8");
+
+    let mut data = String::new();
+    File::open("data/8.txt")
+        .and_then(|mut f| f.read_to_string(&mut data))
+        .unwrap();
+
+    // ECB Will encode 2 identical strings into two identical cyphers.
+    // Therefore if we find 2 identical cyphers then it is very, very, very likely that
+    // this is because we are using ECB, other encoding schemes should return pseudo-random
+    // cyphers which are very unlikely to match
+    let mut found: Option<&str> = None;
+    for line in data.trim().split('\n') {
+        let decoded = from_base64(line).unwrap();
+        let li = decoded.as_slice().chunks(16).collect::<Vec<&[u8]>>();
+        for (index, val1) in li.iter().enumerate() {
+            for val2 in &li[..index] {
+                if val1 == val2 {
+                    found = Some(line);
+                };
+            }
+        }
+    }
+    assert_eq!(found, Some("d880619740a8a19b7840a8a31c810a3d08649af70dc06f4fd5d2d69c744cd283e2dd052f6b641dbf9d11b0348542bb5708649af70dc06f4fd5d2d69c744cd2839475c9dfdbc1d46597949d9c7e82bf5a08649af70dc06f4fd5d2d69c744cd28397a93eab8d6aecd566489154789a6b0308649af70dc06f4fd5d2d69c744cd283d403180c98c8f6db1f2a3f9c4040deb0ab51b29933f2c123c58386b06fba186a"));
 }
 
 fn set2() {
