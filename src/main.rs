@@ -1,10 +1,11 @@
 extern crate env_logger;
 extern crate openssl;
 
+mod base64;
 mod block;
-mod conversion;
 mod decrypt;
 mod encrypt;
+mod hex;
 
 use std::fs::File;
 use std::io::Read;
@@ -12,13 +13,14 @@ use std::io::Read;
 use log::info;
 use openssl::cipher_ctx::CipherCtx;
 
-use crate::block::padding;
-use crate::conversion::{from_hex, load_base64_file, to_base64, xor};
+use crate::base64::{load_base64_file, to_base64};
+use crate::block::{padding, xor};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
 };
 use crate::encrypt::encode_xor;
+use crate::hex::from_hex;
 
 fn main() {
     env_logger::init_from_env(
