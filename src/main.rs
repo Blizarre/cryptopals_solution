@@ -11,10 +11,9 @@ use std::fs::File;
 use std::io::Read;
 
 use log::info;
-use openssl::cipher_ctx::CipherCtx;
 
 use crate::base64::{from_base64, load_base64_file, to_base64};
-use crate::block::{padding, xor};
+use crate::block::{decode_ecb, padding, xor};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
@@ -210,19 +209,11 @@ fn set1() {
 
     info!("Set1 Challenge 7");
 
-    let data = load_base64_file("7").unwrap();
-    let cipher = openssl::cipher::Cipher::aes_128_ecb();
-
-    let mut ctx = CipherCtx::new().unwrap();
-    ctx.decrypt_init(Some(cipher), Some("YELLOW SUBMARINE".as_bytes()), None)
-        .unwrap();
-
-    let mut ciphertext = vec![];
-    ctx.cipher_update_vec(&data, &mut ciphertext).unwrap();
-    ctx.cipher_final_vec(&mut ciphertext).unwrap();
+    let ciphertext = load_base64_file("7").unwrap();
+    let plaintext = decode_ecb(&ciphertext, "YELLOW SUBMARINE".as_bytes()).unwrap();
 
     assert_eq!(
-        String::from_utf8(ciphertext),
+        String::from_utf8(plaintext),
         Ok("I'm back and I'm ringin' the bell \n".to_owned()
             + "A rockin' on the mike while the fly girls yell \n"
             + "In ecstasy in the back of me \n"

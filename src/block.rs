@@ -1,3 +1,5 @@
+use openssl::{cipher_ctx::CipherCtx, error::ErrorStack};
+
 #[derive(Debug, PartialEq)]
 pub struct DataTooLarge();
 
@@ -28,6 +30,18 @@ pub fn padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
             .copied()
             .collect())
     }
+}
+
+pub fn decode_ecb(data: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> {
+    let cipher = openssl::cipher::Cipher::aes_128_ecb();
+
+    let mut ctx = CipherCtx::new()?;
+    ctx.decrypt_init(Some(cipher), Some(key), None)?;
+
+    let mut ciphertext = vec![];
+    ctx.cipher_update_vec(&data, &mut ciphertext)?;
+    ctx.cipher_final_vec(&mut ciphertext)?;
+    Ok(ciphertext)
 }
 
 #[cfg(test)]
