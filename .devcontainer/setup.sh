@@ -10,7 +10,9 @@ apt-get install -y \
   vim \
   build-essential \
   openssl \
-  fish
+  libssl-dev \
+  fish \
+  pkg-config
 
 ## Install rustup and common components
 curl https://sh.rustup.rs -sSf | sh -s -- -y
