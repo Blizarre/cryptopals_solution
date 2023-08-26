@@ -3,7 +3,41 @@ use std::{error::Error, fmt};
 use openssl::error::ErrorStack;
 
 #[derive(Debug, PartialEq)]
-pub struct DataTooLarge();
+pub struct DataTooLarge {
+    got_size: usize,
+    max_size: usize,
+}
+
+impl fmt::Display for DataTooLarge {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Data string too large: size {}, max {}",
+            self.got_size, self.max_size
+        )
+    }
+}
+
+impl Error for DataTooLarge {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InvalidBlockSize(usize);
+
+impl fmt::Display for InvalidBlockSize {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "The block size {} is invalid", self.0)
+    }
+}
+
+impl Error for InvalidBlockSize {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct IncompatibleVectorLength(usize, usize);
@@ -39,9 +73,12 @@ pub fn xor_inplace(v1: &mut [u8], v2: &[u8]) -> Result<(), IncompatibleVectorLen
     Ok(())
 }
 
-pub fn padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
+pub fn pad_block(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
     if data.len() > block_size as usize {
-        Err(DataTooLarge())
+        Err(DataTooLarge {
+            got_size: data.len(),
+            max_size: block_size as usize,
+        })
     } else {
         let padding_len = block_size - data.len() as u8;
         Ok(data
@@ -98,15 +135,62 @@ pub fn decrypt_cbc(
     Ok(padded_plaintext[..padded_plaintext.len() - padding_size].into())
 }
 
+fn add_padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, InvalidBlockSize> {
+    if block_size == 0 {
+        return Err(InvalidBlockSize(block_size as usize));
+    }
+
+    let to_add = data.len() % block_size as usize;
+    let mut padded_data = Vec::from(&data[..data.len() - to_add]);
+
+    // using unwrap because the error would not make sense to the caller,
+    // and is a critical internal bug.
+    // Never too sure about this, but that's how openssl does it.
+    let mut padding = if to_add == 0 {
+        pad_block(&[], block_size).unwrap()
+    } else {
+        pad_block(&data[data.len() - to_add..], block_size).unwrap()
+    };
+    padded_data.append(&mut padding);
+    Ok(padded_data)
+}
+
+pub fn encrypt_cbc(
+    plaintext: &[u8],
+    iv: &[u8],
+    key: &[u8],
+) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let mut last_cipher = Vec::from(iv);
+    let plaintext = add_padding(&Vec::from(plaintext), 16)?;
+    let mut result = Vec::with_capacity(plaintext.len());
+
+    for plain_block in plaintext.chunks(16) {
+        let xored_block = xor(plain_block, &last_cipher)?;
+        let mut cipher_block = encrypt_ecb(&xored_block, key)?;
+        cipher_block.resize(16, 0);
+        result.append(&mut cipher_block.clone());
+        last_cipher = cipher_block;
+    }
+
+    // Now we return the result without the ecb padding
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::block::*;
 
     #[test]
     fn test_padding() {
-        assert_eq!(padding(&[1, 2, 3], 5), Ok(vec![1, 2, 3, 2, 2]));
-        assert_eq!(padding(&[1, 2, 3], 1), Err(DataTooLarge()));
-        assert_eq!(padding(&[], 4), Ok(vec![4, 4, 4, 4]));
+        assert_eq!(pad_block(&[1, 2, 3], 5), Ok(vec![1, 2, 3, 2, 2]));
+        assert_eq!(
+            pad_block(&[1, 2, 3], 1),
+            Err(DataTooLarge {
+                got_size: 3,
+                max_size: 1
+            })
+        );
+        assert_eq!(pad_block(&[], 4), Ok(vec![4, 4, 4, 4]));
     }
 
     #[test]
@@ -143,5 +227,43 @@ mod tests {
             assert_ne!(ciphertext, plaintext);
             assert_eq!(plaintext, decrypted_ciphertext);
         }
+    }
+
+    #[test]
+    fn test_cbc() {
+        let iv: Vec<u8> = [0, 1, 2].iter().cycle().take(16).copied().collect();
+        for (plaintext, cipher_len) in [
+            (b"".to_vec(), 16),
+            (b"0".to_vec(), 16),
+            (b"YELLOW SUBMARINE".to_vec(), 32),
+            (b"banana banana banana".to_vec(), 32),
+        ] {
+            let key = "AZERTYUIOPASDFGH".as_bytes();
+            let ciphertext = encrypt_cbc(&plaintext, &iv, key).unwrap();
+            assert_eq!(ciphertext.len(), cipher_len);
+            let decrypted_ciphertext = decrypt_cbc(&ciphertext, &iv, key).unwrap();
+
+            assert_ne!(ciphertext, plaintext);
+            assert_eq!(plaintext, decrypted_ciphertext);
+        }
+    }
+
+    #[test]
+
+    fn test_add_padding() {
+        assert!(add_padding(&[0], 0).is_err());
+
+        assert_eq!(add_padding(&[], 1).unwrap(), vec![1]);
+        assert_eq!(add_padding(&[1], 1).unwrap(), vec![1, 1]);
+        assert_eq!(add_padding(&[1, 2, 3], 3).unwrap(), vec![1, 2, 3, 3, 3, 3]);
+
+        assert_eq!(
+            add_padding(&[1, 2, 3, 4], 6).unwrap(),
+            vec![1, 2, 3, 4, 2, 2]
+        );
+        assert_eq!(
+            add_padding(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 6).unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 2, 2]
+        );
     }
 }
