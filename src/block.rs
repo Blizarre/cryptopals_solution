@@ -143,6 +143,8 @@ pub fn encrypt_ecb(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> 
 /// This is horrible. But it works, mostly... Need to check if I can access
 /// a lower level primitive do decrypt a single aes block instread of hacking an
 /// ECB stream with a fake padding
+/// What I really wanted was access to the low-level method AES_encrypt which doesn't seem
+/// to be exposed by the openssl crate: https://man.openbsd.org/AES_encrypt.3
 pub fn decrypt_cbc(
     ciphertext: &[u8],
     iv: &[u8],
