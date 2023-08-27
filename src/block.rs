@@ -2,6 +2,43 @@ use std::{error::Error, fmt};
 
 use openssl::error::ErrorStack;
 
+#[derive(Debug, Clone, Copy)]
+pub struct BlockSize {
+    value: u8,
+}
+
+impl BlockSize {
+    pub fn new(size: usize) -> Result<BlockSize, InvalidBlockSize> {
+        if size == 0 || size >= 256 {
+            Err(InvalidBlockSize(0))
+        } else {
+            Ok(BlockSize { value: size as u8 })
+        }
+    }
+
+    pub const AES_BLK_SZ_U8: u8 = 16;
+    pub const AES_BLK_SZ_USIZE: usize = 16;
+
+    pub const AES_BLK_SZ: BlockSize = BlockSize {
+        value: BlockSize::AES_BLK_SZ_U8,
+    };
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InvalidBlockSize(usize);
+
+impl fmt::Display for InvalidBlockSize {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Invalid block size {} (must be >0 and <256)", self.0)
+    }
+}
+
+impl Error for InvalidBlockSize {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct DataTooLarge {
     got_size: usize,
@@ -19,21 +56,6 @@ impl fmt::Display for DataTooLarge {
 }
 
 impl Error for DataTooLarge {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct InvalidBlockSize(usize);
-
-impl fmt::Display for InvalidBlockSize {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "The block size {} is invalid", self.0)
-    }
-}
-
-impl Error for InvalidBlockSize {
     fn cause(&self) -> Option<&dyn Error> {
         None
     }
@@ -73,14 +95,14 @@ pub fn xor_inplace(v1: &mut [u8], v2: &[u8]) -> Result<(), IncompatibleVectorLen
     Ok(())
 }
 
-pub fn pad_block(data: &[u8], block_size: u8) -> Result<Vec<u8>, DataTooLarge> {
-    if data.len() > block_size as usize {
+pub fn pad_block(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, DataTooLarge> {
+    if data.len() > block_size.value as usize {
         Err(DataTooLarge {
             got_size: data.len(),
-            max_size: block_size as usize,
+            max_size: block_size.value as usize,
         })
     } else {
-        let padding_len = block_size - data.len() as u8;
+        let padding_len = block_size.value - data.len() as u8;
         Ok(data
             .iter()
             .chain([padding_len].iter().cycle().take(padding_len as usize))
@@ -125,7 +147,10 @@ pub fn decrypt_cbc(
 
     // We go through each block and xor it in place with the previous ciphertext to get the
     // plaintext + padding
-    for (plain_block, cipher_block) in padded_plaintext.chunks_mut(16).zip(ciphertext.chunks(16)) {
+    for (plain_block, cipher_block) in padded_plaintext
+        .chunks_mut(BlockSize::AES_BLK_SZ_USIZE)
+        .zip(ciphertext.chunks(BlockSize::AES_BLK_SZ_USIZE))
+    {
         xor_inplace(plain_block, last_cipher)?;
         last_cipher = cipher_block;
     }
@@ -135,21 +160,18 @@ pub fn decrypt_cbc(
     Ok(padded_plaintext[..padded_plaintext.len() - padding_size].into())
 }
 
-fn add_padding(data: &[u8], block_size: u8) -> Result<Vec<u8>, InvalidBlockSize> {
-    if block_size == 0 {
-        return Err(InvalidBlockSize(block_size as usize));
-    }
-
-    let to_add = data.len() % block_size as usize;
+fn add_padding(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, InvalidBlockSize> {
+    let to_add = data.len() % block_size.value as usize;
     let mut padded_data = Vec::from(&data[..data.len() - to_add]);
 
-    // using unwrap because the error would not make sense to the caller,
+    // using expect because the error would not make sense to the caller,
     // and is a critical internal bug.
     // Never too sure about this, but that's how openssl does it.
     let mut padding = if to_add == 0 {
-        pad_block(&[], block_size).unwrap()
+        pad_block(&[], block_size).expect("Unexpected error in add_padding #1")
     } else {
-        pad_block(&data[data.len() - to_add..], block_size).unwrap()
+        pad_block(&data[data.len() - to_add..], block_size)
+            .expect("Unexpected error in add_padding #2")
     };
     padded_data.append(&mut padding);
     Ok(padded_data)
@@ -161,10 +183,10 @@ pub fn encrypt_cbc(
     key: &[u8],
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let mut last_cipher = Vec::from(iv);
-    let plaintext = add_padding(&Vec::from(plaintext), 16)?;
+    let plaintext = add_padding(&Vec::from(plaintext), BlockSize::AES_BLK_SZ)?;
     let mut result = Vec::with_capacity(plaintext.len());
 
-    for plain_block in plaintext.chunks(16) {
+    for plain_block in plaintext.chunks(BlockSize::AES_BLK_SZ_USIZE) {
         let xored_block = xor(plain_block, &last_cipher)?;
         let mut cipher_block = encrypt_ecb(&xored_block, key)?;
         cipher_block.resize(16, 0);
@@ -182,15 +204,21 @@ mod tests {
 
     #[test]
     fn test_padding() {
-        assert_eq!(pad_block(&[1, 2, 3], 5), Ok(vec![1, 2, 3, 2, 2]));
         assert_eq!(
-            pad_block(&[1, 2, 3], 1),
+            pad_block(&[1, 2, 3], BlockSize::new(5).unwrap()),
+            Ok(vec![1, 2, 3, 2, 2])
+        );
+        assert_eq!(
+            pad_block(&[1, 2, 3], BlockSize::new(1).unwrap()),
             Err(DataTooLarge {
                 got_size: 3,
                 max_size: 1
             })
         );
-        assert_eq!(pad_block(&[], 4), Ok(vec![4, 4, 4, 4]));
+        assert_eq!(
+            pad_block(&[], BlockSize::new(4).unwrap()),
+            Ok(vec![4, 4, 4, 4])
+        );
     }
 
     #[test]
@@ -250,19 +278,31 @@ mod tests {
 
     #[test]
 
-    fn test_add_padding() {
-        assert!(add_padding(&[0], 0).is_err());
+    fn test_block_size() {
+        assert!(BlockSize::new(0).is_err());
+        assert!(BlockSize::new(300).is_err());
+        assert!(BlockSize::new(257).is_err());
+        assert!(BlockSize::new(10).is_ok())
+    }
 
-        assert_eq!(add_padding(&[], 1).unwrap(), vec![1]);
-        assert_eq!(add_padding(&[1], 1).unwrap(), vec![1, 1]);
-        assert_eq!(add_padding(&[1, 2, 3], 3).unwrap(), vec![1, 2, 3, 3, 3, 3]);
+    #[test]
+    fn test_add_padding() {
+        let blk_sz_1 = BlockSize::new(1).unwrap();
+        let blk_sz_6 = BlockSize::new(6).unwrap();
+
+        assert_eq!(add_padding(&[], blk_sz_1).unwrap(), vec![1]);
+        assert_eq!(add_padding(&[1], blk_sz_1).unwrap(), vec![1, 1]);
+        assert_eq!(
+            add_padding(&[1, 2, 3], blk_sz_6).unwrap(),
+            vec![1, 2, 3, 3, 3, 3]
+        );
 
         assert_eq!(
-            add_padding(&[1, 2, 3, 4], 6).unwrap(),
+            add_padding(&[1, 2, 3, 4], blk_sz_6).unwrap(),
             vec![1, 2, 3, 4, 2, 2]
         );
         assert_eq!(
-            add_padding(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 6).unwrap(),
+            add_padding(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], blk_sz_6).unwrap(),
             vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 2, 2]
         );
     }

@@ -13,7 +13,7 @@ use std::io::Read;
 use log::info;
 
 use crate::base64::{from_base64, load_base64_file, to_base64};
-use crate::block::{decrypt_cbc, decrypt_ecb, pad_block, xor};
+use crate::block::{decrypt_cbc, decrypt_ecb, pad_block, xor, BlockSize};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
@@ -326,7 +326,7 @@ fn set2() {
     info!("Set1 Challenge 9");
 
     assert_eq!(
-        pad_block(b"YELLOW SUBMARINE", 20),
+        pad_block(b"YELLOW SUBMARINE", BlockSize::new(20).unwrap()),
         Ok(Vec::from(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref()))
     );
 
