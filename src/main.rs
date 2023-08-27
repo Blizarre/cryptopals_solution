@@ -13,7 +13,7 @@ use std::io::Read;
 use log::info;
 
 use crate::base64::{from_base64, load_base64_file, to_base64};
-use crate::block::{decrypt_cbc, decrypt_ecb, pad_block, xor, BlockSize};
+use crate::block::{add_padding, decrypt_cbc, decrypt_ecb, encrypt_cbc, xor, BlockSize};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
@@ -310,7 +310,10 @@ fn set1() {
     let mut found: Option<&str> = None;
     for line in data.trim().split('\n') {
         let decoded = from_base64(line).unwrap();
-        let li = decoded.as_slice().chunks(16).collect::<Vec<&[u8]>>();
+        let li = decoded
+            .as_slice()
+            .chunks(BlockSize::AES_BLK_SZ_USIZE)
+            .collect::<Vec<&[u8]>>();
         for (index, val1) in li.iter().enumerate() {
             for val2 in &li[..index] {
                 if val1 == val2 {
@@ -326,17 +329,26 @@ fn set2() {
     info!("Set1 Challenge 9");
 
     assert_eq!(
-        pad_block(b"YELLOW SUBMARINE", BlockSize::new(20).unwrap()),
+        add_padding(b"YELLOW SUBMARINE", BlockSize::new(20).unwrap()),
         Ok(Vec::from(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref()))
     );
 
     info!("Set1 Challenge 10");
 
     let ciphertext = load_base64_file("10").unwrap();
-    let iv: Vec<u8> = [0u8].iter().cycle().take(16).copied().collect();
+    let iv: Vec<u8> = [0u8]
+        .iter()
+        .cycle()
+        .take(BlockSize::AES_BLK_SZ_USIZE)
+        .copied()
+        .collect();
     let key = b"YELLOW SUBMARINE";
 
     let plaintext = decrypt_cbc(&ciphertext, &iv, key).unwrap();
+    let ciphertext_from_plain = encrypt_cbc(&plaintext, &iv, key).unwrap();
+
+    assert_eq!(ciphertext_from_plain, ciphertext);
+
     assert_eq!(
         String::from_utf8(plaintext).unwrap(),
         "I'm back and I'm ringin' the bell \n".to_owned()

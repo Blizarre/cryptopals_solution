@@ -95,7 +95,7 @@ pub fn xor_inplace(v1: &mut [u8], v2: &[u8]) -> Result<(), IncompatibleVectorLen
     Ok(())
 }
 
-pub fn pad_block(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, DataTooLarge> {
+fn pad_block(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, DataTooLarge> {
     if data.len() > block_size.value as usize {
         Err(DataTooLarge {
             got_size: data.len(),
@@ -109,6 +109,23 @@ pub fn pad_block(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, DataTooL
             .copied()
             .collect())
     }
+}
+
+pub fn add_padding(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, InvalidBlockSize> {
+    let to_add = data.len() % block_size.value as usize;
+    let mut padded_data = Vec::from(&data[..data.len() - to_add]);
+
+    // using expect because the error would not make sense to the caller,
+    // and is a critical internal bug.
+    // Never too sure about this, but that's how openssl does it.
+    let mut padding = if to_add == 0 {
+        pad_block(&[], block_size).expect("Unexpected error in add_padding #1")
+    } else {
+        pad_block(&data[data.len() - to_add..], block_size)
+            .expect("Unexpected error in add_padding #2")
+    };
+    padded_data.append(&mut padding);
+    Ok(padded_data)
 }
 
 pub fn decrypt_ecb(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> {
@@ -158,23 +175,6 @@ pub fn decrypt_cbc(
     // Now we return the result without the padding
     let padding_size = padded_plaintext[padded_plaintext.len() - 1] as usize;
     Ok(padded_plaintext[..padded_plaintext.len() - padding_size].into())
-}
-
-fn add_padding(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, InvalidBlockSize> {
-    let to_add = data.len() % block_size.value as usize;
-    let mut padded_data = Vec::from(&data[..data.len() - to_add]);
-
-    // using expect because the error would not make sense to the caller,
-    // and is a critical internal bug.
-    // Never too sure about this, but that's how openssl does it.
-    let mut padding = if to_add == 0 {
-        pad_block(&[], block_size).expect("Unexpected error in add_padding #1")
-    } else {
-        pad_block(&data[data.len() - to_add..], block_size)
-            .expect("Unexpected error in add_padding #2")
-    };
-    padded_data.append(&mut padding);
-    Ok(padded_data)
 }
 
 pub fn encrypt_cbc(
