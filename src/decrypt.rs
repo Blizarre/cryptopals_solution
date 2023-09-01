@@ -216,35 +216,35 @@ mod tests {
     #[test]
     fn test_englishwordfreq() {
         assert!(
-            EnglishWordFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
-                > EnglishWordFreq::score("aaaBBB".as_bytes()).unwrap()
+            EnglishWordFreq::score(b"Hello world, This is a weird test").unwrap()
+                > EnglishWordFreq::score(b"aaaBBB").unwrap()
         );
         assert!(
-            EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-                > EnglishWordFreq::score("yesyesyesyes".as_bytes()).unwrap()
+            EnglishWordFreq::score(b"Hello world. This is not a test").unwrap()
+                > EnglishWordFreq::score(b"yesyesyesyes").unwrap()
         );
         assert!(
-            EnglishWordFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-                > EnglishWordFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
+            EnglishWordFreq::score(b"Hello world. This is not a test").unwrap()
+                > EnglishWordFreq::score(b"CCCvdd jdsdsdg suy yes of DDDDNNN").unwrap()
         );
-        assert!(EnglishWordFreq::score("Hello\0world".as_bytes()).is_none());
+        assert!(EnglishWordFreq::score(b"Hello\0world").is_none());
     }
 
     #[test]
     fn test_englishletterfreq() {
         assert!(
-            EnglishLetterFreq::score("Hello world, This is a weird test".as_bytes()).unwrap()
-                > EnglishLetterFreq::score("aaaBBB".as_bytes()).unwrap()
+            EnglishLetterFreq::score(b"Hello world, This is a weird test").unwrap()
+                > EnglishLetterFreq::score(b"aaaBBB").unwrap()
         );
         assert!(
-            EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-                > EnglishLetterFreq::score("yesyesyesyes".as_bytes()).unwrap()
+            EnglishLetterFreq::score(b"Hello world. This is not a test").unwrap()
+                > EnglishLetterFreq::score(b"yesyesyesyes").unwrap()
         );
         assert!(
-            EnglishLetterFreq::score("Hello world. This is not a test".as_bytes()).unwrap()
-                > EnglishLetterFreq::score("CCCvdd jdsdsdg suy yes of DDDDNNN".as_bytes()).unwrap()
+            EnglishLetterFreq::score(b"Hello world. This is not a test").unwrap()
+                > EnglishLetterFreq::score(b"CCCvdd jdsdsdg suy yes of DDDDNNN").unwrap()
         );
-        assert!(EnglishLetterFreq::score("Hello\0world".as_bytes()).is_none());
+        assert!(EnglishLetterFreq::score(b"Hello\0world").is_none());
     }
 
     #[test]

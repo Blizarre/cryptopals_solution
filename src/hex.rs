@@ -26,7 +26,7 @@ mod tests {
     fn test_from_hex() {
         assert_eq!(
             from_hex("48656c6c6f2c20776f726c6421").unwrap(),
-            "Hello, world!".as_bytes()
+            b"Hello, world!"
         );
 
         assert!(from_hex("").unwrap().is_empty());
