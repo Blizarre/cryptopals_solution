@@ -66,7 +66,7 @@ pub fn decrypt(data_in: &[u8; 16], data_out: &mut [u8; 16], key: &AesKeyDecrypt)
     }
 }
 
-#[link(name = "ssl")]
+#[link(name = "crypto")]
 extern "C" {
     fn AES_set_encrypt_key(userKey: *const u8, bits: c_int, key: *mut AesKeyFfi) -> c_int;
 

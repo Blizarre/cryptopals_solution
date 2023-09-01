@@ -1,7 +1,5 @@
 use std::{error::Error, fmt};
 
-use openssl::error::ErrorStack;
-
 use crate::ffi_openssl::{decrypt, encrypt, AesKeyDecrypt, AesKeyEncrypt};
 
 #[derive(Debug, Clone, Copy)]
@@ -148,18 +146,6 @@ pub fn add_padding(data: &[u8], block_size: BlockSize) -> Result<Vec<u8>, Invali
     Ok(padded_data)
 }
 
-pub fn decrypt_ecb(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> {
-    let cipher: openssl::symm::Cipher = openssl::symm::Cipher::aes_128_ecb();
-    let plaintext = openssl::symm::decrypt(cipher, key, None, ciphertext)?;
-    Ok(plaintext)
-}
-
-pub fn encrypt_ecb(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> {
-    let cipher: openssl::symm::Cipher = openssl::symm::Cipher::aes_128_ecb();
-    let ciphertext = openssl::symm::encrypt(cipher, key, None, plaintext)?;
-    Ok(ciphertext)
-}
-
 // A lot of try_into to guarantee a known block size at the interface boundaries with ffi_openssl.
 // It doesn't feel "clean", I would love `chunks_exact(16)` to return `[u8;16]`, but alas that's
 // not supported by the type system...
@@ -171,12 +157,11 @@ pub fn decrypt_cbc(
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let mut last_cipher = iv;
     let key = AesKeyDecrypt::new(key)?;
-    if ciphertext.len() % 16 != 0 || ciphertext.len() == 0 {
+    if ciphertext.len() % 16 != 0 || ciphertext.is_empty() {
         return Err(InvalidCiphertext(ciphertext.len()).into());
     }
 
-    let mut plaintext = Vec::with_capacity(ciphertext.len());
-    plaintext.resize(ciphertext.len(), 0);
+    let mut plaintext = vec![0; ciphertext.len()];
 
     for (plain_block, cipher_block) in plaintext
         .chunks_exact_mut(BlockSize::AES_BLK_SZ_USIZE)
@@ -203,8 +188,7 @@ pub fn encrypt_cbc(
 
     let plaintext = add_padding(&Vec::from(plaintext), BlockSize::AES_BLK_SZ)?;
 
-    let mut ciphertext = Vec::with_capacity(plaintext.len());
-    ciphertext.resize(plaintext.len(), 0);
+    let mut ciphertext = vec![0; plaintext.len()];
 
     let key = AesKeyEncrypt::new(key)?;
     for (plain_block, cipher_block) in plaintext
@@ -218,6 +202,39 @@ pub fn encrypt_cbc(
     }
 
     Ok(ciphertext)
+}
+
+pub fn encrypt_ecb(plaintext: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let plaintext = add_padding(&Vec::from(plaintext), BlockSize::AES_BLK_SZ)?;
+    let mut ciphertext = vec![0; plaintext.len()];
+
+    let key = AesKeyEncrypt::new(key)?;
+    for (plain_block, cipher_block) in plaintext
+        .chunks_exact(BlockSize::AES_BLK_SZ_USIZE)
+        .zip(ciphertext.chunks_exact_mut(16))
+    {
+        let cipher_block: &mut [u8; 16] = cipher_block.try_into()?;
+        encrypt(&(*plain_block).try_into()?, cipher_block, &key);
+    }
+
+    Ok(ciphertext)
+}
+
+pub fn decrypt_ecb(ciphertext: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let mut plaintext = vec![0; ciphertext.len()];
+
+    let key = AesKeyDecrypt::new(key)?;
+    for (plain_block, cipher_block) in plaintext
+        .chunks_exact_mut(BlockSize::AES_BLK_SZ_USIZE)
+        .zip(ciphertext.chunks_exact(16))
+    {
+        decrypt(cipher_block.try_into()?, plain_block.try_into()?, &key);
+    }
+
+    // We know it's not going to be null because there has to be padding
+    let padding_len = plaintext[plaintext.len() - 1];
+    plaintext.resize(plaintext.len() - padding_len as usize, 0);
+    Ok(plaintext)
 }
 
 #[cfg(test)]
@@ -270,7 +287,7 @@ mod tests {
             b"YELLOW SUBMARINE".to_vec(),
             b"banana banana banana".to_vec(),
         ] {
-            let key = "AZERTYUIOPASDFGH".as_bytes();
+            let key: &[u8; 16] = b"AZERTYUIOPASDFGH";
             let ciphertext = encrypt_ecb(&plaintext, key).unwrap();
             let decrypted_ciphertext = decrypt_ecb(&ciphertext, key).unwrap();
 
@@ -281,37 +298,22 @@ mod tests {
 
     #[test]
     fn test_cbc() {
-        let iv: Vec<u8> = [0, 1, 2].iter().cycle().take(16).copied().collect();
+        let iv = b"ivIVivIVivIVivIV";
         for (plaintext, cipher_len) in [
             (b"".to_vec(), 16),
             (b"0".to_vec(), 16),
             (b"YELLOW SUBMARINE".to_vec(), 32),
             (b"banana banana banana".to_vec(), 32),
         ] {
-            let key = "AZERTYUIOPASDFGH".as_bytes();
-            let ciphertext = encrypt_cbc(
-                &plaintext,
-                iv.as_slice().try_into().unwrap(),
-                key.try_into().unwrap(),
-            )
-            .unwrap();
+            let key = b"AZERTYUIOPASDFGH";
+            let ciphertext = encrypt_cbc(&plaintext, iv, key).unwrap();
             assert_eq!(ciphertext.len(), cipher_len);
-            let decrypted_ciphertext = decrypt_cbc(
-                &ciphertext,
-                iv.as_slice().try_into().unwrap(),
-                key.try_into().unwrap(),
-            )
-            .unwrap();
+            let decrypted_ciphertext = decrypt_cbc(&ciphertext, iv, key).unwrap();
 
             assert_ne!(ciphertext, plaintext);
             assert_eq!(plaintext, decrypted_ciphertext);
 
-            assert!(decrypt_cbc(
-                &ciphertext[..5],
-                iv.as_slice().try_into().unwrap(),
-                key.try_into().unwrap(),
-            )
-            .is_err());
+            assert!(decrypt_cbc(&ciphertext[..5], iv, key,).is_err());
         }
     }
 

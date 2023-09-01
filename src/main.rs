@@ -1,5 +1,4 @@
 extern crate env_logger;
-extern crate openssl;
 
 mod base64;
 mod block;
@@ -14,7 +13,9 @@ use std::io::Read;
 use log::info;
 
 use crate::base64::{from_base64, load_base64_file, to_base64};
-use crate::block::{add_padding, decrypt_cbc, decrypt_ecb, encrypt_cbc, xor, BlockSize};
+use crate::block::{
+    add_padding, decrypt_cbc, decrypt_ecb, encrypt_cbc, encrypt_ecb, xor, BlockSize,
+};
 use crate::decrypt::{
     break_xor_single_char, find_key_block_xor, find_likely_xor_keysizes, hamming_distance,
     EnglishWordFreq,
@@ -211,8 +212,11 @@ fn set1() {
     info!("Set1 Challenge 7");
 
     let ciphertext = load_base64_file("7").unwrap();
-    let plaintext = decrypt_ecb(&ciphertext, "YELLOW SUBMARINE".as_bytes()).unwrap();
+    let plaintext = decrypt_ecb(&ciphertext, b"YELLOW SUBMARINE").unwrap();
 
+    let ciphertext_2 = encrypt_ecb(&plaintext, b"YELLOW SUBMARINE").unwrap();
+
+    assert_eq!(ciphertext, ciphertext_2);
     assert_eq!(
         String::from_utf8(plaintext),
         Ok("I'm back and I'm ringin' the bell \n".to_owned()
