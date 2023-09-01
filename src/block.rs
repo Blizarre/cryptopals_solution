@@ -2,6 +2,8 @@ use std::{error::Error, fmt};
 
 use openssl::error::ErrorStack;
 
+use crate::ffi_openssl::{decrypt, encrypt, AesKeyDecrypt, AesKeyEncrypt};
+
 #[derive(Debug, Clone, Copy)]
 pub struct BlockSize {
     value: u8,
@@ -76,6 +78,24 @@ impl Error for IncompatibleVectorLength {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct InvalidCiphertext(usize);
+
+impl fmt::Display for InvalidCiphertext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Invalid ciphertext length: {}. Must be not empty and a multiple of block size",
+            self.0
+        )
+    }
+}
+
+impl Error for InvalidCiphertext {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
 pub fn xor(v1: &[u8], v2: &[u8]) -> Result<Vec<u8>, IncompatibleVectorLength> {
     let mut result = Vec::from(v1);
 
@@ -140,64 +160,64 @@ pub fn encrypt_ecb(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, ErrorStack> 
     Ok(ciphertext)
 }
 
-/// This is horrible. But it works, mostly... Need to check if I can access
-/// a lower level primitive do decrypt a single aes block instread of hacking an
-/// ECB stream with a fake padding
-/// What I really wanted was access to the low-level method AES_encrypt which doesn't seem
-/// to be exposed by the openssl crate: https://man.openbsd.org/AES_encrypt.3
+// A lot of try_into to guarantee a known block size at the interface boundaries with ffi_openssl.
+// It doesn't feel "clean", I would love `chunks_exact(16)` to return `[u8;16]`, but alas that's
+// not supported by the type system...
+
 pub fn decrypt_cbc(
     ciphertext: &[u8],
-    iv: &[u8],
-    key: &[u8],
+    iv: &[u8; 16],
+    key: &[u8; 16],
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
     let mut last_cipher = iv;
-
-    // We pad the cbc ciphertext with the PKCK#7 padding for an ecb cipher (16 chars of \0).
-    // This ensure that the Openssl ecb cipher will accept the ciphertext and decrypt the whole of
-    // the cbc ciphertext and its padding (which are xor-ed).
-    let padded_ciphertext = {
-        let mut v = Vec::from(ciphertext);
-        v.append(&mut encrypt_ecb(b"", key)?);
-        v
-    };
-
-    // Now we got the xored (plaintext + padding)
-    let mut padded_plaintext = decrypt_ecb(&padded_ciphertext, key)?;
-
-    // We go through each block and xor it in place with the previous ciphertext to get the
-    // plaintext + padding
-    for (plain_block, cipher_block) in padded_plaintext
-        .chunks_mut(BlockSize::AES_BLK_SZ_USIZE)
-        .zip(ciphertext.chunks(BlockSize::AES_BLK_SZ_USIZE))
-    {
-        xor_inplace(plain_block, last_cipher)?;
-        last_cipher = cipher_block;
+    let key = AesKeyDecrypt::new(key)?;
+    if ciphertext.len() % 16 != 0 || ciphertext.len() == 0 {
+        return Err(InvalidCiphertext(ciphertext.len()).into());
     }
 
-    // Now we return the result without the padding
-    let padding_size = padded_plaintext[padded_plaintext.len() - 1] as usize;
-    Ok(padded_plaintext[..padded_plaintext.len() - padding_size].into())
+    let mut plaintext = Vec::with_capacity(ciphertext.len());
+    plaintext.resize(ciphertext.len(), 0);
+
+    for (plain_block, cipher_block) in plaintext
+        .chunks_exact_mut(BlockSize::AES_BLK_SZ_USIZE)
+        .zip(ciphertext.chunks(BlockSize::AES_BLK_SZ_USIZE))
+    {
+        let cipher_block_16: &[u8; 16] = cipher_block.try_into()?;
+        decrypt(cipher_block_16, plain_block.try_into()?, &key);
+        xor_inplace(plain_block, last_cipher)?;
+        last_cipher = cipher_block_16;
+    }
+
+    // We know it's not going to be null because there has to be padding
+    let padding_len = plaintext[plaintext.len() - 1];
+    plaintext.resize(plaintext.len() - padding_len as usize, 0);
+    Ok(plaintext)
 }
 
 pub fn encrypt_cbc(
     plaintext: &[u8],
-    iv: &[u8],
-    key: &[u8],
+    iv: &[u8; 16],
+    key: &[u8; 16],
 ) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
-    let mut last_cipher = Vec::from(iv);
-    let plaintext = add_padding(&Vec::from(plaintext), BlockSize::AES_BLK_SZ)?;
-    let mut result = Vec::with_capacity(plaintext.len());
+    let mut last_cipher = *iv;
 
-    for plain_block in plaintext.chunks(BlockSize::AES_BLK_SZ_USIZE) {
+    let plaintext = add_padding(&Vec::from(plaintext), BlockSize::AES_BLK_SZ)?;
+
+    let mut ciphertext = Vec::with_capacity(plaintext.len());
+    ciphertext.resize(plaintext.len(), 0);
+
+    let key = AesKeyEncrypt::new(key)?;
+    for (plain_block, cipher_block) in plaintext
+        .chunks_exact(BlockSize::AES_BLK_SZ_USIZE)
+        .zip(ciphertext.chunks_exact_mut(16))
+    {
+        let cipher_block: &mut [u8; 16] = cipher_block.try_into()?;
         let xored_block = xor(plain_block, &last_cipher)?;
-        let mut cipher_block = encrypt_ecb(&xored_block, key)?;
-        cipher_block.resize(16, 0);
-        result.append(&mut cipher_block.clone());
-        last_cipher = cipher_block;
+        encrypt(&(*xored_block).try_into()?, cipher_block, &key);
+        last_cipher = *cipher_block;
     }
 
-    // Now we return the result without the ecb padding
-    Ok(result)
+    Ok(ciphertext)
 }
 
 #[cfg(test)]
@@ -269,12 +289,29 @@ mod tests {
             (b"banana banana banana".to_vec(), 32),
         ] {
             let key = "AZERTYUIOPASDFGH".as_bytes();
-            let ciphertext = encrypt_cbc(&plaintext, &iv, key).unwrap();
+            let ciphertext = encrypt_cbc(
+                &plaintext,
+                iv.as_slice().try_into().unwrap(),
+                key.try_into().unwrap(),
+            )
+            .unwrap();
             assert_eq!(ciphertext.len(), cipher_len);
-            let decrypted_ciphertext = decrypt_cbc(&ciphertext, &iv, key).unwrap();
+            let decrypted_ciphertext = decrypt_cbc(
+                &ciphertext,
+                iv.as_slice().try_into().unwrap(),
+                key.try_into().unwrap(),
+            )
+            .unwrap();
 
             assert_ne!(ciphertext, plaintext);
             assert_eq!(plaintext, decrypted_ciphertext);
+
+            assert!(decrypt_cbc(
+                &ciphertext[..5],
+                iv.as_slice().try_into().unwrap(),
+                key.try_into().unwrap(),
+            )
+            .is_err());
         }
     }
 

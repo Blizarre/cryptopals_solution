@@ -5,6 +5,7 @@ mod base64;
 mod block;
 mod decrypt;
 mod encrypt;
+mod ffi_openssl;
 mod hex;
 
 use std::fs::File;
@@ -336,12 +337,7 @@ fn set2() {
     info!("Set1 Challenge 10");
 
     let ciphertext = load_base64_file("10").unwrap();
-    let iv: Vec<u8> = [0u8]
-        .iter()
-        .cycle()
-        .take(BlockSize::AES_BLK_SZ_USIZE)
-        .copied()
-        .collect();
+    let iv = [0; 16];
     let key = b"YELLOW SUBMARINE";
 
     let plaintext = decrypt_cbc(&ciphertext, &iv, key).unwrap();
