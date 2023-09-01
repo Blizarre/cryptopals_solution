@@ -8,7 +8,7 @@ It's still in progress!
 
 ## Build
 
-You will need the `libcrypto` library, usually provided by the `openssl`` package of your distribution. This library is used to provide
+You will need the `libcrypto` library, usually provided by the `openssl` package of your distribution. This library is used to provide
 the basic AES encryption/decryption routines for single blocks.
 
 ```shell
