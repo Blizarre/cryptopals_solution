@@ -1,3 +1,7 @@
+/**
+It is a bit weird to import the openssl bindings directly instead of using available crates like openssl
+or openssl-sys, but none of them expose the low-level AES_encrypt and AES_decrypt functions.
+*/
 use std::{error::Error, fmt::Display};
 
 use libc::{c_int, c_void};
@@ -21,11 +25,7 @@ impl Display for InternalKeyError {
         write!(f, "AES Key expansion Error, code {}", self.code)
     }
 }
-impl Error for InternalKeyError {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
+impl Error for InternalKeyError {}
 pub struct AesKeyDecrypt(AesKeyFfi);
 
 impl AesKeyDecrypt {
@@ -54,13 +54,13 @@ impl AesKeyEncrypt {
     }
 }
 
-pub fn encrypt(data_in: &[u8; 16], data_out: &mut [u8; 16], key: &AesKeyEncrypt) {
+pub fn aes_encrypt(data_in: &[u8; 16], data_out: &mut [u8; 16], key: &AesKeyEncrypt) {
     unsafe {
         AES_encrypt(data_in.as_ptr(), data_out.as_mut_ptr(), &key.0);
     }
 }
 
-pub fn decrypt(data_in: &[u8; 16], data_out: &mut [u8; 16], key: &AesKeyDecrypt) {
+pub fn aes_decrypt(data_in: &[u8; 16], data_out: &mut [u8; 16], key: &AesKeyDecrypt) {
     unsafe {
         AES_decrypt(data_in.as_ptr(), data_out.as_mut_ptr(), &key.0);
     }
@@ -80,8 +80,8 @@ extern "C" {
 #[cfg(test)]
 mod tests {
     use super::{
-        decrypt, encrypt, AES_decrypt, AES_encrypt, AES_set_decrypt_key, AES_set_encrypt_key,
-        AesKeyDecrypt, AesKeyEncrypt, AesKeyFfi,
+        aes_decrypt, aes_encrypt, AES_decrypt, AES_encrypt, AES_set_decrypt_key,
+        AES_set_encrypt_key, AesKeyDecrypt, AesKeyEncrypt, AesKeyFfi,
     };
 
     #[test]
@@ -121,8 +121,8 @@ mod tests {
         let mut decoded_ciphertext = [0u8; 16];
         let key_encrypt = AesKeyEncrypt::new(key_str).unwrap();
         let key_decrypt = AesKeyDecrypt::new(key_str).unwrap();
-        encrypt(&plaintext, &mut ciphertext, &key_encrypt);
-        decrypt(&ciphertext, &mut decoded_ciphertext, &key_decrypt);
+        aes_encrypt(&plaintext, &mut ciphertext, &key_encrypt);
+        aes_decrypt(&ciphertext, &mut decoded_ciphertext, &key_decrypt);
 
         assert_eq!(plaintext, &decoded_ciphertext);
         assert_ne!(plaintext, &ciphertext);

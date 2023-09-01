@@ -23,11 +23,7 @@ impl fmt::Display for InvalidBase64Char {
     }
 }
 
-impl Error for InvalidBase64Char {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
+impl Error for InvalidBase64Char {}
 
 // https://datatracker.ietf.org/doc/html/rfc4648#section-4
 fn from_base64_char(c: char) -> Result<u8, InvalidBase64Char> {
