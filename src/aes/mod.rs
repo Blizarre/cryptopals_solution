@@ -4,6 +4,7 @@ use crate::block::{add_padding, xor, xor_inplace, BlockSize};
 
 use self::ffi_openssl::{aes_decrypt, aes_encrypt, AesKeyDecrypt, AesKeyEncrypt};
 mod ffi_openssl;
+use rand::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub struct DataTooLarge {
@@ -127,6 +128,26 @@ pub fn decrypt_ecb(ciphertext: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, Box<dyn
     let padding_len = plaintext[plaintext.len() - 1];
     plaintext.resize(plaintext.len() - padding_len as usize, 0);
     Ok(plaintext)
+}
+
+pub fn encrypt_with_random_key_prepost(data: &[u8]) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+    let mut rng = rand::thread_rng();
+
+    let pre_padding_sz = rng.gen_range(5..10);
+    let pre_padding: Vec<u8> = (0..pre_padding_sz).map(|_| rng.gen()).collect();
+    let post_padding_sz = rng.gen_range(5..10);
+    let post_padding: Vec<u8> = (0..post_padding_sz).map(|_| rng.gen()).collect();
+
+    let padded_data = [pre_padding, data.to_vec(), post_padding].concat();
+
+    let key = rng.gen();
+
+    if random() {
+        let iv = rng.gen();
+        encrypt_cbc(&padded_data, &iv, &key)
+    } else {
+        encrypt_ecb(&padded_data, &key)
+    }
 }
 
 #[cfg(test)]
