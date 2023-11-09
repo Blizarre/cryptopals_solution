@@ -130,23 +130,47 @@ pub fn decrypt_ecb(ciphertext: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, Box<dyn
     Ok(plaintext)
 }
 
-pub fn encrypt_with_random_key_prepost(data: &[u8]) -> Result<Vec<u8>, Box<dyn Error + 'static>> {
+#[derive(PartialEq, Debug)]
+pub enum Protocol {
+    Ecb,
+    Cbc,
+}
+
+pub fn unknown_encryption(data: &[u8]) -> Result<(Protocol, Vec<u8>), Box<dyn Error + 'static>> {
     let mut rng = rand::thread_rng();
 
-    let pre_padding_sz = rng.gen_range(5..10);
-    let pre_padding: Vec<u8> = (0..pre_padding_sz).map(|_| rng.gen()).collect();
-    let post_padding_sz = rng.gen_range(5..10);
-    let post_padding: Vec<u8> = (0..post_padding_sz).map(|_| rng.gen()).collect();
+    let mut gen_padding = |size_range| -> Vec<u8> {
+        let size: i32 = rng.gen_range(size_range);
+        (0..size).map(|_| rng.gen()).collect()
+    };
 
-    let padded_data = [pre_padding, data.to_vec(), post_padding].concat();
+    let padded_data = [gen_padding(5..10), data.to_vec(), gen_padding(5..10)].concat();
 
     let key = rng.gen();
 
-    if random() {
+    if random::<bool>() {
         let iv = rng.gen();
-        encrypt_cbc(&padded_data, &iv, &key)
+        Ok((Protocol::Cbc, encrypt_cbc(&padded_data, &iv, &key)?))
     } else {
-        encrypt_ecb(&padded_data, &key)
+        Ok((Protocol::Ecb, encrypt_ecb(&padded_data, &key)?))
+    }
+}
+
+/// Oracle that can detect wether a function encodes data using ECB or CBC
+/// The function can add some padding at the beginning or at the end (less than 1 block)
+/// We send the same character enough time to be able to skip the padding and detect
+/// repeating block encryption (same input data -> same output means ECB)
+pub fn oracle(func: impl FnOnce(&[u8]) -> Vec<u8>) -> Protocol {
+    let test_data = b"a".repeat(16 * 3);
+    let result = func(&test_data);
+
+    let result = result.iter().skip(16);
+    let first = result.clone().take(16).copied().collect::<Vec<u8>>();
+    let second = result.skip(16).take(16).copied().collect::<Vec<u8>>();
+    if first == second {
+        Protocol::Ecb
+    } else {
+        Protocol::Cbc
     }
 }
 

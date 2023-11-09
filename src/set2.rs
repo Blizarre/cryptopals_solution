@@ -1,6 +1,6 @@
 use log::info;
 
-use crate::aes::{decrypt_cbc, encrypt_cbc, encrypt_with_random_key_prepost};
+use crate::aes::{decrypt_cbc, encrypt_cbc, oracle, unknown_encryption, Protocol};
 use crate::base64::load_base64_file;
 use crate::block::{add_padding, BlockSize};
 
@@ -109,6 +109,15 @@ pub fn run() {
     );
 
     info!("Set2 Challenge 11");
-    // Implementer
-    assert!(encrypt_with_random_key_prepost(b"THIS IS A TEST").is_ok());
+
+    for _ in 0..30 {
+        // This is super clunky but it works
+        let mut real_protocol = Protocol::Cbc;
+        let protocol = oracle(|x| {
+            let res = unknown_encryption(x).unwrap();
+            real_protocol = res.0;
+            res.1
+        });
+        assert_eq!(protocol, real_protocol);
+    }
 }
