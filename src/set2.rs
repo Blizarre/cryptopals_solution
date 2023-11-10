@@ -121,3 +121,12 @@ pub fn run() {
         assert_eq!(protocol, real_protocol);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::set2::run;
+    #[test]
+    fn test() {
+        run();
+    }
+}
