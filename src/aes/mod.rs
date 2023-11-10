@@ -162,11 +162,15 @@ pub fn unknown_encryption(data: &[u8]) -> Result<(Protocol, Vec<u8>), Box<dyn Er
 /// repeating block encryption (same input data -> same output means ECB)
 pub fn oracle(func: impl FnOnce(&[u8]) -> Vec<u8>) -> Protocol {
     let test_data = b"a".repeat(16 * 3);
-    let result = func(&test_data);
+    let encrypted_data = func(&test_data);
+    let mut blocks = encrypted_data.chunks(16).skip(1);
 
-    let result = result.iter().skip(16);
-    let first = result.clone().take(16).copied().collect::<Vec<u8>>();
-    let second = result.skip(16).take(16).copied().collect::<Vec<u8>>();
+    let first = blocks
+        .next()
+        .expect("Invalid encryption method, output data is smaller than input data");
+    let second = blocks
+        .next()
+        .expect("Invalid encryption method, output data is smaller than input data");
     if first == second {
         Protocol::Ecb
     } else {
@@ -213,6 +217,30 @@ mod tests {
             assert_eq!(plaintext, decrypted_ciphertext);
 
             assert!(decrypt_cbc(&ciphertext[..5], iv, key,).is_err());
+        }
+    }
+
+    #[test]
+    fn test_oracle() {
+        let iv = b"ivIVivIVivIVivIV";
+        let key = b"AZERTYUIOPASDFGH";
+
+        assert_eq!(
+            oracle(|data| encrypt_cbc(&data, iv, key).unwrap()),
+            Protocol::Cbc
+        );
+        assert_eq!(
+            oracle(|data| encrypt_ecb(&data, key).unwrap()),
+            Protocol::Ecb
+        );
+    }
+
+    #[test]
+    fn test_unknown_encryption() {
+        for sample_data in [b"".to_vec(), b"hello".to_vec(), b"c".repeat(500)] {
+            let data1 = unknown_encryption(&sample_data).unwrap();
+            let data2 = unknown_encryption(&sample_data).unwrap();
+            assert_ne!(data1, data2);
         }
     }
 }
