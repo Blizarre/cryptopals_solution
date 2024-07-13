@@ -111,7 +111,8 @@ pub fn run() {
     info!("Set2 Challenge 11");
 
     for _ in 0..30 {
-        // This is super clunky but it works
+        // This is super clunky but it works to extract the real protocol without telling
+        // the oracle function
         let mut real_protocol = Protocol::Cbc;
         let protocol = oracle(|x| {
             let res = unknown_encryption(x).unwrap();

@@ -136,6 +136,7 @@ pub enum Protocol {
     Cbc,
 }
 
+/// This encrypts data using either CB or EBC (chosen at random).
 pub fn unknown_encryption(data: &[u8]) -> Result<(Protocol, Vec<u8>), Box<dyn Error + 'static>> {
     let mut rng = rand::thread_rng();
 
