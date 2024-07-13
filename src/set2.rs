@@ -1,8 +1,10 @@
 use log::info;
+use rand::Rng;
 
-use crate::aes::{decrypt_cbc, encrypt_cbc, oracle, unknown_encryption, Protocol};
-use crate::base64::load_base64_file;
+use crate::aes::{decrypt_cbc, encrypt_cbc, encrypt_ecb, oracle, unknown_encryption, Protocol};
+use crate::base64::{from_base64, load_base64_file};
 use crate::block::{add_padding, BlockSize};
+use crate::crack::crack_ecb;
 
 pub fn run() {
     info!("Set2 Challenge 9");
@@ -121,6 +123,30 @@ pub fn run() {
         });
         assert_eq!(protocol, real_protocol);
     }
+
+    info!("Set2 Challenge 12");
+    let secret_message = from_base64(
+        "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkga\
+        GFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvI\
+        HNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK",
+    )
+    .unwrap();
+
+    let mut rng = rand::thread_rng();
+
+    let unknown_key: [u8; 16] = rng.gen();
+    let random_ecb = |data: &[u8]| {
+        return encrypt_ecb(
+            [data, secret_message.as_slice()].concat().as_slice(),
+            &unknown_key,
+        );
+    };
+
+    let extracted_message = crack_ecb(random_ecb).unwrap();
+    assert_eq!(
+        String::from_utf8(extracted_message).unwrap(),
+        String::from_utf8(secret_message).unwrap()
+    );
 }
 
 #[cfg(test)]

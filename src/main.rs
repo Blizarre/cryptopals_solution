@@ -3,6 +3,7 @@ extern crate env_logger;
 mod aes;
 mod base64;
 mod block;
+mod crack;
 mod decrypt;
 mod encrypt;
 mod hex;
